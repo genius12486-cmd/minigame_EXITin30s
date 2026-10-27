@@ -97,7 +97,6 @@ body.reduced-motion *::after {
 .token-badge .badge-val { color: var(--accent-gold); }
 .chest-badge .badge-val { color: var(--accent-purple); }
 
-/* 가운데 대형 30초 산소 타이머 */
 .hud-center-timer {
   display: flex;
   flex-direction: column;
@@ -262,7 +261,7 @@ body.reduced-motion *::after {
   transform: translateX(-50%) translateY(-3px);
 }
 
-/* ★ 위치 배치 (상자와 기계 위치 교체됨) */
+/* ★ 위치 및 크기 조정 (겹치지 않게) */
 .prop-door-left {
   left: 2%;
   bottom: 9%;
@@ -275,24 +274,25 @@ body.reduced-motion *::after {
   width: 22%;
 }
 
+/* 책상 크기 축소 (19% -> 15%) */
 .prop-desk {
-  left: 40%;
+  left: 42%;
   bottom: 8%;
-  width: 19%;
+  width: 15%;
 }
 
-/* 상자: 책상 바로 옆 (60%) */
+/* 상자 크기 축소 (12% -> 9%) */
 .prop-chest {
   left: 60%;
   bottom: 6%;
-  width: 12%;
+  width: 9%;
 }
 
-/* 기계: 오른쪽 문 바로 옆 (76%) */
+/* 기계 위치 왼쪽으로 이동 (76% -> 71%), 크기 약간 축소 (15% -> 13%) */
 .prop-machine {
-  left: 76%;
+  left: 71%;
   bottom: 8%;
-  width: 15%;
+  width: 13%;
 }
 
 .prop-door-right {
@@ -368,7 +368,7 @@ body.reduced-motion *::after {
   box-shadow: 0 0 26px rgba(56, 189, 248, 0.7);
 }
 
-/* ===== 3. 클로즈업 레이어 (미니멀 UI) ===== */
+/* ===== 3. 클로즈업 레이어 ===== */
 .closeup-layer {
   position: absolute;
   inset: 0;
@@ -389,15 +389,16 @@ body.reduced-motion *::after {
   width: 92%;
   max-height: 85vh;
   overflow-y: auto;
-  padding: 24px;
+  padding: 50px 24px 24px 24px;
   position: relative;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.95);
 }
 
+/* ★ X 버튼 위치를 더 위쪽 구석으로 이동 */
 .btn-close-view {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: 10px; /* 14px -> 10px */
+  right: 10px; /* 14px -> 10px */
   background: #172433;
   color: #94a3b8;
   border: 1px solid #25394f;
@@ -411,7 +412,7 @@ body.reduced-motion *::after {
   align-items: center;
   justify-content: center;
   transition: all 0.15s;
-  z-index: 5;
+  z-index: 10;
 }
 
 .btn-close-view:hover {
@@ -420,7 +421,7 @@ body.reduced-motion *::after {
   border-color: var(--accent-cyan);
 }
 
-/* ===== ★ 기계 뷰 레이아웃 (세련된 다크 테크 스타일) ===== */
+/* ===== 기계 뷰 ===== */
 .machine-user-layout {
   display: flex;
   gap: 20px;
@@ -493,7 +494,6 @@ body.reduced-motion *::after {
   opacity: 0.9;
 }
 
-/* 원형 다이얼 */
 .circle-dial {
   position: relative;
   width: 250px;
@@ -582,7 +582,6 @@ body.reduced-motion *::after {
   border-color: var(--accent-red);
 }
 
-/* 8개 원형 위치 */
 #dBtn1 { top: 12px;  left: 103px; }
 #dBtn2 { top: 40px;  left: 167px; }
 #dBtn3 { top: 103px; left: 194px; }
@@ -597,7 +596,6 @@ body.reduced-motion *::after {
   100% { transform: scale(1.1); box-shadow: 0 0 18px rgba(56, 189, 248, 0.9); }
 }
 
-/* ★ 토큰 획득 시 위로 떠오르며 사라지는 애니메이션 (요구사항 4) */
 .floating-token-fx {
   position: absolute;
   top: 50%;
@@ -613,34 +611,18 @@ body.reduced-motion *::after {
 }
 
 @keyframes floatUpFade {
-  0% {
-    transform: translate(-50%, -20%) scale(0.8);
-    opacity: 1;
-  }
-  50% {
-    transform: translate(-50%, -75%) scale(1.25);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-50%, -120%) scale(1.1);
-    opacity: 0;
-  }
+  0% { transform: translate(-50%, -20%) scale(0.8); opacity: 1; }
+  50% { transform: translate(-50%, -75%) scale(1.25); opacity: 1; }
+  100% { transform: translate(-50%, -120%) scale(1.1); opacity: 0; }
 }
 
-/* ===== ★ 왼쪽 문 인터랙티브 패널 (요구사항 5) ===== */
+/* ===== 문 인터랙티브 패널 ===== */
 .door-interactive-box {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
   padding: 10px 0;
-}
-
-.door-preview-img {
-  width: 90px;
-  height: auto;
-  border-radius: var(--radius-sm);
-  border: 1px solid #1e2c3d;
 }
 
 .door-input-panel, .door-open-panel {
@@ -732,7 +714,7 @@ body.reduced-motion *::after {
   font-size: 1.05rem;
 }
 
-/* ===== ★ 빈 방 & 빈 버튼 (요구사항 6) ===== */
+/* ===== 빈 방 ===== */
 .empty-room-container {
   display: flex;
   flex-direction: column;
@@ -753,7 +735,6 @@ body.reduced-motion *::after {
   box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.85);
 }
 
-/* 가운데 빈 버튼 */
 .blank-center-btn {
   width: 90px;
   height: 90px;
@@ -779,7 +760,6 @@ body.reduced-motion *::after {
   width: 100%;
 }
 
-/* 책상 뷰 */
 .diary-simple {
   background: #0f1622;
   border: 1px solid #1e2c3d;
@@ -794,7 +774,6 @@ body.reduced-motion *::after {
   color: #fff;
 }
 
-/* 유산 상자 뷰 */
 .vault-box {
   background: rgba(192, 132, 252, 0.08);
   border: 1px dashed rgba(192, 132, 252, 0.35);
@@ -819,75 +798,6 @@ body.reduced-motion *::after {
   font-weight: 900;
 }
 
-/* 키패드 (오른쪽 문) */
-.keypad-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.keypad-screen {
-  background: #060b12;
-  border: 2px solid var(--accent-cyan);
-  color: var(--accent-cyan);
-  font-family: monospace;
-  font-size: 1.6rem;
-  font-weight: 800;
-  letter-spacing: 8px;
-  padding: 8px 24px;
-  border-radius: var(--radius-sm);
-  width: 220px;
-  text-align: center;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
-}
-
-.keypad-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  width: 220px;
-}
-
-.key-btn {
-  background: #141f2c;
-  color: #fff;
-  border: 1px solid #23354a;
-  padding: 12px;
-  border-radius: var(--radius-sm);
-  font-size: 1.1rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.1s;
-}
-
-.key-btn:hover {
-  background: #23354a;
-  border-color: var(--accent-cyan);
-}
-
-.key-btn:active {
-  transform: scale(0.95);
-}
-
-.key-btn.clear {
-  background: #351c1c;
-  color: #fca5a5;
-  border-color: #522727;
-}
-
-.key-btn.ok {
-  background: #133522;
-  color: #6ee7b7;
-  border-color: #215938;
-}
-
-.keypad-status {
-  font-size: 0.85rem;
-  color: var(--text-dim);
-}
-
-/* 깔끔한 공통 버튼 */
 .btn-clean-action {
   background: #1c2a3a;
   color: #fff;
@@ -1003,7 +913,7 @@ body.reduced-motion *::after {
   border-color: #6b21a8;
 }
 
-/* ===== 모달 오버레이 ===== */
+/* ===== 모달 ===== */
 .modal-overlay {
   position: fixed;
   inset: 0;

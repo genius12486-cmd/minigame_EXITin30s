@@ -41,45 +41,45 @@
     <main class="room-viewport" id="roomViewport">
       <div class="room-stage" id="roomStage">
         <!-- 1. 빈 방 배경 -->
-        <img src="assets/room_empty.png" alt="밀실 배경" class="layer-bg">
+        <img src="assets/room_empty.webp" alt="밀실 배경" class="layer-bg">
 
-        <!-- 2. 왼쪽 문 : 명칭 '문' -->
+        <!-- 2. 왼쪽 문 -->
         <div class="room-prop prop-door-left" id="propDoorLeft" title="문">
-          <img src="assets/door_closed.png" alt="문" id="doorLeftImg">
+          <img src="assets/door_closed.webp" alt="문" id="doorLeftImg">
           <div class="obj-indicator">문</div>
         </div>
 
-        <!-- 3. 침대 : 순수 배경 (클릭 불가) -->
+        <!-- 3. 침대 (클릭 불가) -->
         <div class="room-prop prop-bed static-scenery">
-          <img src="assets/bed.png" alt="침대">
+          <img src="assets/bed.webp" alt="침대">
         </div>
 
         <!-- 4. 책상 -->
         <div class="room-prop prop-desk" id="propDesk" title="책상">
-          <img src="assets/desk.png" alt="책상" class="desk-body">
+          <img src="assets/desk.webp" alt="책상" class="desk-body">
           <div class="obj-indicator">책상</div>
         </div>
 
-        <!-- 5. 상자 (위치 교체: 책상 옆 60%) -->
+        <!-- 5. 상자 -->
         <div class="room-prop prop-chest" id="propChest" title="상자">
-          <img src="assets/chest.png" alt="상자" id="chestImg">
+          <img src="assets/chest.webp" alt="상자" id="chestImg">
           <div class="obj-indicator">상자</div>
         </div>
 
-        <!-- 6. 기계 (위치 교체: 오른쪽 문 옆 76%) -->
+        <!-- 6. 기계 -->
         <div class="room-prop prop-machine" id="propMachine" title="기계">
-          <img src="assets/machine.png" alt="기계" id="machineImg">
+          <img src="assets/machine.webp" alt="기계" id="machineImg">
           <div class="obj-indicator">기계</div>
         </div>
 
-        <!-- 7. 오른쪽 문 : 명칭 '문' -->
+        <!-- 7. 오른쪽 문 -->
         <div class="room-prop prop-door-right" id="propDoorRight" title="문">
-          <img src="assets/door_closed.png" alt="문" id="doorRightImg" class="flip-h">
+          <img src="assets/door_closed.webp" alt="문" id="doorRightImg" class="flip-h">
           <div class="obj-indicator">문</div>
         </div>
       </div>
 
-      <!-- [시작 전 대기 화면] 게임 시작 버튼 오버레이 -->
+      <!-- 시작 전 대기 화면 -->
       <div class="start-screen-overlay" id="startScreenOverlay">
         <div class="start-card">
           <div class="start-icon">⏳</div>
@@ -92,19 +92,16 @@
         </div>
       </div>
 
-      <!-- 클로즈업 레이어 (오브젝트 제목 제거 및 미니멀 UI) -->
+      <!-- 클로즈업 레이어 -->
       <div class="closeup-layer" id="closeupLayer" style="display: none;">
         <div class="closeup-box" id="closeupBox">
+          <!-- X 버튼 위치 상향 조정 -->
           <button class="btn-close-view" id="btnCloseCloseup" title="닫기">✖</button>
 
-          <!-- [뷰 1] 왼쪽 문 : 다이얼 수량 입력 후 '넣기' 방식 (정확히 5개 시 문 열림) -->
+          <!-- [뷰 1] 왼쪽 문 (이미지 제거, 다이얼만) -->
           <div class="inspect-view" id="viewDoorLeft" style="display: none;">
             <div class="door-interactive-box">
-              <div class="door-status-graphic">
-                <img src="assets/door_closed.png" alt="문" id="inspectDoorLeftImg" class="door-preview-img">
-              </div>
-
-              <!-- 문이 아직 닫혀있을 때: 다이얼 입력 패널 -->
+              <!-- 문 이미지 삭제됨 -->
               <div id="doorClosedPanel" class="door-input-panel">
                 <p class="door-instruction">다이얼로 투입할 토큰 수를 맞추고 '넣기'를 누르세요.</p>
                 <div class="token-dial-selector">
@@ -118,8 +115,6 @@
                 <button id="btnSubmitDial" class="btn-clean-action highlight">넣기</button>
                 <p class="door-feedback-msg" id="doorFeedbackMsg"></p>
               </div>
-
-              <!-- 문이 열렸을 때: 방으로 들어가기 패널 -->
               <div id="doorOpenPanel" class="door-open-panel" style="display: none;">
                 <p class="door-opened-text">철컥! 문이 활짝 열렸습니다.</p>
                 <button id="btnEnterLeftDoor" class="btn-clean-action highlight enter-btn">방 안으로 들어가기 ➡️</button>
@@ -127,10 +122,9 @@
             </div>
           </div>
 
-          <!-- [뷰 2] 기계 : 토큰 1개로 2초 늘리기 & 8버튼 회전 다이얼 -->
+          <!-- [뷰 2] 기계 -->
           <div class="inspect-view" id="viewMachine" style="display: none;">
             <div class="machine-user-layout">
-              <!-- 좌측: 회전 다이얼 -->
               <div class="machine-col-left">
                 <div class="circle-dial" id="circleDial">
                   <div class="dial-center-hub">
@@ -148,8 +142,6 @@
                   <button class="dial-btn" data-step="8" id="dBtn8">8</button>
                 </div>
               </div>
-
-              <!-- 우측: 생존시간 2초 늘리기 카드 -->
               <div class="machine-col-right">
                 <div class="extend-card-block">
                   <p class="extend-info-text">
@@ -172,7 +164,7 @@
               <p>• <strong>기계</strong> : 1번부터 8번까지 시계 방향으로 누르면 토큰 1개를 얻습니다.</p>
               <p>• <strong>시간 연장</strong> : 토큰 1개로 산소 시간을 2초 늘릴 수 있습니다.</p>
               <p>• <strong>상자</strong> : 시간이 다 되어 쓰러져도 모아둔 토큰은 상자에 보존됩니다.</p>
-              <p>• <strong>문</strong> : 방에는 두 개의 문이 있습니다. 하나의 문은 토큰을 요구하며, 다른 문은 4자리 암호(<strong>8426</strong>)가 필요합니다.</p>
+              <p>• <strong>문</strong> : 방에는 두 개의 문이 있습니다. 두 문 모두 정확한 수량의 토큰(5개)을 투입해야 열립니다.</p>
             </div>
           </div>
 
@@ -187,33 +179,29 @@
             </div>
           </div>
 
-          <!-- [뷰 5] 오른쪽 문 -->
+          <!-- [뷰 5] ★ 오른쪽 문 (키패드 삭제, 왼쪽 문과 동일한 다이얼 방식으로 변경) -->
           <div class="inspect-view" id="viewDoorRight" style="display: none;">
-            <div class="keypad-container">
-              <div class="keypad-screen" id="keypadScreen">_ _ _ _</div>
-              <div class="keypad-grid">
-                <button class="key-btn" data-key="1">1</button>
-                <button class="key-btn" data-key="2">2</button>
-                <button class="key-btn" data-key="3">3</button>
-                <button class="key-btn" data-key="4">4</button>
-                <button class="key-btn" data-key="5">5</button>
-                <button class="key-btn" data-key="6">6</button>
-                <button class="key-btn" data-key="7">7</button>
-                <button class="key-btn" data-key="8">8</button>
-                <button class="key-btn" data-key="9">9</button>
-                <button class="key-btn clear" id="btnKeyClear">C</button>
-                <button class="key-btn" data-key="0">0</button>
-                <button class="key-btn ok" id="btnKeyEnter">OK</button>
+            <div class="door-interactive-box">
+              <div id="doorRightClosedPanel" class="door-input-panel">
+                <p class="door-instruction">다이얼로 투입할 토큰 수를 맞추고 '넣기'를 누르세요.</p>
+                <div class="token-dial-selector">
+                  <button id="btnRightDialMinus" class="dial-arrow-btn">◀</button>
+                  <div class="dial-amount-display">
+                    <span class="amount-num" id="rightDialAmountNum">0</span>
+                    <span class="amount-unit">개</span>
+                  </div>
+                  <button id="btnRightDialPlus" class="dial-arrow-btn">▶</button>
+                </div>
+                <button id="btnSubmitRightDial" class="btn-clean-action highlight">넣기</button>
+                <p class="door-feedback-msg" id="rightDoorFeedbackMsg"></p>
               </div>
-              <p class="keypad-status" id="keypadStatus">암호를 입력하세요.</p>
             </div>
           </div>
 
-          <!-- [뷰 6] ★ 열린 왼쪽 문 너머의 빈 방 (가운데 빈 버튼 하나) -->
+          <!-- [뷰 6] 빈 방 -->
           <div class="inspect-view" id="viewEmptyRoom" style="display: none;">
             <div class="empty-room-container">
               <div class="empty-room-inner">
-                <!-- 가운데 빈 버튼 하나 -->
                 <button id="btnBlankClear" class="blank-center-btn" title="빈 버튼"></button>
               </div>
               <div class="empty-room-footer">
@@ -241,7 +229,7 @@
       </div>
     </footer>
 
-    <!-- 결과 / 엔딩 모달 (사망 or 진엔딩) -->
+    <!-- 모달들 -->
     <div class="modal-overlay" id="resultModal" style="display: none;">
       <div class="modal-card">
         <div class="modal-icon" id="modalIcon">🎉</div>
@@ -253,7 +241,6 @@
       </div>
     </div>
 
-    <!-- ★ 빈 방 버튼 클릭 시 나오는 단순 안내 메시지 창 (게임은 끝나지 않고 계속 가능) -->
     <div class="modal-overlay" id="clearMessageModal" style="display: none;">
       <div class="modal-card">
         <div class="modal-icon">🎉</div>
@@ -268,10 +255,9 @@
       </div>
     </div>
 
-    <!-- 20회 검증 기록 모달 (카드 3) -->
     <div class="modal-overlay" id="historyModal" style="display: none;">
       <div class="modal-card wide">
-        <h2>📊 플레이 검증 기록표 (카드 3)</h2>
+        <h2>📊 플레이 검증 기록표</h2>
         <p class="desc">설정 A(5개)와 설정 B(10개) 플레이 기록을 확인하고 복사할 수 있습니다.</p>
         <div class="table-wrap">
           <table class="history-table">

@@ -8,7 +8,6 @@
 
   // ===== 1. 핵심 설정 및 상수 =====
   const STORAGE_KEY = 'THE_MACHINE_SAVE_V6';
-  const PASSCODE_SECRET = '8426';
 
   // 난이도 단일 수치 변수: 문 개방에 필요한 정확한 토큰 수 (카드 3)
   const DIFFICULTY_PRESETS = {
@@ -16,7 +15,7 @@
     B: { name: '설정 B (어려움 10개)', targetTokens: 10 }
   };
 
-  // 런타임 게임 상태 (매 판 초기화)
+  // 런타임 게임 상태
   let state = {
     status: 'READY', // 'READY', 'PLAYING', 'CLEAR_TRUE', 'GAME_OVER'
     timeRemaining: 30.0,
@@ -27,14 +26,15 @@
     leftDoorOpen: false,
     doorDialAmount: 0,
 
+    // 오른쪽 문 다이얼 투입 및 개방 상태 (추가)
+    rightDoorOpen: false,
+    rightDoorDialAmount: 0,
+
     // 8버튼 원형 다이얼 미니게임 (1~8)
     dialStep: 1,
     gearAngle: 0,
 
-    // 키패드 입력값 (오른쪽 문)
-    keypadInput: '',
-
-    // 현재 열려있는 줌인 뷰 ('none', 'doorLeft', 'machine', 'desk', 'chest', 'doorRight', 'emptyRoom')
+    // 현재 열려있는 줌인 뷰
     currentView: 'none',
 
     totalPlaySeconds: 0
@@ -53,7 +53,7 @@
   let animationFrameId = null;
   let backgroundIntervalId = null;
 
-  // ===== 2. 무음원 Web Audio API 사운드 합성 (카드 5) =====
+  // ===== 2. 무음원 Web Audio API 사운드 합성 =====
   let audioCtx = null;
   function getAudioContext() {
     if (!audioCtx) {
@@ -81,9 +81,7 @@
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + duration);
-    } catch (e) {
-      // 오디오 예외 무시
-    }
+    } catch (e) {}
   }
 
   const SoundFX = {
@@ -95,12 +93,10 @@
     },
     dialError: () => playTone(180, 'sawtooth', 0.2, 0.12),
     extendTime: () => {
-      // 2초 연장 소리
       playTone(587.33, 'sine', 0.08, 0.08);
       setTimeout(() => playTone(880, 'sine', 0.12, 0.09), 70);
     },
     doorOpen: () => {
-      // 문 열림 소리
       playTone(400, 'triangle', 0.15, 0.1);
       setTimeout(() => playTone(600, 'triangle', 0.2, 0.12), 120);
     },
@@ -115,8 +111,6 @@
         setTimeout(() => playTone(f, 'sine', 0.2, 0.14), i * 120);
       });
     },
-    keyPress: () => playTone(750, 'sine', 0.04, 0.04),
-    keyError: () => playTone(180, 'sawtooth', 0.25, 0.12),
     trueClear: () => {
       [330, 392, 493, 587, 659].forEach((f, i) => {
         setTimeout(() => playTone(f, 'triangle', 0.35, 0.12), i * 180);
@@ -154,8 +148,9 @@
     // 줌인 레이어 & 뷰
     closeupLayer: document.getElementById('closeupLayer'),
     btnCloseCloseup: document.getElementById('btnCloseCloseup'),
+    
+    // 왼쪽 문 뷰
     viewDoorLeft: document.getElementById('viewDoorLeft'),
-    inspectDoorLeftImg: document.getElementById('inspectDoorLeftImg'),
     doorClosedPanel: document.getElementById('doorClosedPanel'),
     doorOpenPanel: document.getElementById('doorOpenPanel'),
     btnDialMinus: document.getElementById('btnDialMinus'),
@@ -189,13 +184,16 @@
     crateCountText: document.getElementById('crateCountText'),
     btnTakeChest: document.getElementById('btnTakeChest'),
 
+    // 오른쪽 문 뷰 (다이얼 방식)
     viewDoorRight: document.getElementById('viewDoorRight'),
-    keypadScreen: document.getElementById('keypadScreen'),
-    keypadStatus: document.getElementById('keypadStatus'),
-    btnKeyClear: document.getElementById('btnKeyClear'),
-    btnKeyEnter: document.getElementById('btnKeyEnter'),
+    doorRightClosedPanel: document.getElementById('doorRightClosedPanel'),
+    btnRightDialMinus: document.getElementById('btnRightDialMinus'),
+    btnRightDialPlus: document.getElementById('btnRightDialPlus'),
+    rightDialAmountNum: document.getElementById('rightDialAmountNum'),
+    btnSubmitRightDial: document.getElementById('btnSubmitRightDial'),
+    rightDoorFeedbackMsg: document.getElementById('rightDoorFeedbackMsg'),
 
-    // 빈 방 뷰 (요구사항 6)
+    // 빈 방 뷰
     viewEmptyRoom: document.getElementById('viewEmptyRoom'),
     btnBlankClear: document.getElementById('btnBlankClear'),
     btnReturnToMainRoom: document.getElementById('btnReturnToMainRoom'),
@@ -222,7 +220,7 @@
     btnCloseHistory: document.getElementById('btnCloseHistory')
   };
 
-  // ===== 4. 로컬 저장소 안전 관리 (카드 4) =====
+  // ===== 4. 로컬 저장소 안전 관리 =====
   function loadPersistentData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
@@ -256,7 +254,7 @@
     }
   }
 
-  // ===== 5. 게임 루프 & 실시간 타이머 (창 이동해도 멈추지 않음) =====
+  // ===== 5. 게임 루프 & 실시간 타이머 =====
   function handleGameStartButtonClick() {
     DOM.startScreenOverlay.style.display = 'none';
     startCountdown();
@@ -268,27 +266,26 @@
     state.currentTokens = 0;
     state.leftDoorOpen = false;
     state.doorDialAmount = 0;
+    state.rightDoorOpen = false;
+    state.rightDoorDialAmount = 0;
     state.dialStep = 1;
     state.gearAngle = 0;
-    state.keypadInput = '';
     state.totalPlaySeconds = 0;
 
-    DOM.doorLeftImg.src = 'assets/door_closed.png';
-    DOM.inspectDoorLeftImg.src = 'assets/door_closed.png';
+    DOM.doorLeftImg.src = 'assets/door_closed.webp';
     DOM.doorClosedPanel.style.display = 'flex';
     DOM.doorOpenPanel.style.display = 'none';
     DOM.doorFeedbackMsg.textContent = '';
     DOM.dialAmountNum.textContent = '0';
 
-    DOM.doorRightImg.src = 'assets/door_closed.png';
+    DOM.doorRightImg.src = 'assets/door_closed.webp';
+    DOM.doorRightClosedPanel.style.display = 'flex';
+    DOM.rightDoorFeedbackMsg.textContent = '';
+    DOM.rightDialAmountNum.textContent = '0';
 
     closeCloseup();
     DOM.resultModal.style.display = 'none';
     DOM.clearMessageModal.style.display = 'none';
-
-    DOM.keypadScreen.textContent = '_ _ _ _';
-    DOM.keypadStatus.textContent = '암호를 입력하세요.';
-    DOM.keypadStatus.style.color = '#94a3b8';
 
     updateDialVisuals();
     setLog('게임 시작! 30초 산소 타이머가 가동되었습니다.');
@@ -304,13 +301,14 @@
     backgroundIntervalId = setInterval(tickTime, 100);
   }
 
-  // ★ 다시 시작할 때 즉시 시작하지 않고 시작 화면 오버레이로 이동
   function prepareRestart() {
     state.status = 'READY';
     state.timeRemaining = 30.0;
     state.currentTokens = 0;
     state.leftDoorOpen = false;
     state.doorDialAmount = 0;
+    state.rightDoorOpen = false;
+    state.rightDoorDialAmount = 0;
     state.dialStep = 1;
     state.gearAngle = 0;
 
@@ -320,9 +318,8 @@
       animationFrameId = null;
     }
 
-    DOM.doorLeftImg.src = 'assets/door_closed.png';
-    DOM.inspectDoorLeftImg.src = 'assets/door_closed.png';
-    DOM.doorRightImg.src = 'assets/door_closed.png';
+    DOM.doorLeftImg.src = 'assets/door_closed.webp';
+    DOM.doorRightImg.src = 'assets/door_closed.webp';
 
     closeCloseup();
     DOM.resultModal.style.display = 'none';
@@ -363,7 +360,7 @@
     DOM.statusLogText.textContent = text;
   }
 
-  // ===== 6. 줌인(클로즈업) 뷰 전환 =====
+  // ===== 6. 줌인 뷰 전환 =====
   function openCloseup(viewName) {
     if (state.status !== 'PLAYING') return;
     state.currentView = viewName;
@@ -391,7 +388,7 @@
     setLog('방 중앙을 둘러보고 있습니다.');
   }
 
-  // ===== 7. 기계 8버튼 회전 미니게임 & 🪙 떠오르는 토큰 FX =====
+  // ===== 7. 기계 8버튼 회전 미니게임 =====
   function handleDialButtonClick(btnStep) {
     if (state.status !== 'PLAYING') return;
 
@@ -404,7 +401,6 @@
         state.dialStep = btnStep + 1;
         updateDialVisuals();
       } else {
-        // ★ 8번 완주 -> 토큰 +1 & 떠오르는 토큰 FX 애니메이션
         SoundFX.dialComplete();
         state.currentTokens += 1;
         state.dialStep = 1;
@@ -427,7 +423,6 @@
     }
   }
 
-  // 떠오르는 토큰 FX 애니메이션 (요구사항 4)
   function triggerFloatingTokenFx() {
     if (persistentData.isReducedMotion) return;
     const floatFx = document.createElement('div');
@@ -452,7 +447,6 @@
     });
   }
 
-  // 시간 연장 (★ 1토큰 = +2초 연장)
   function handleExtend() {
     if (state.status !== 'PLAYING') return;
     if (state.currentTokens < 1) {
@@ -460,13 +454,13 @@
       return;
     }
     state.currentTokens -= 1;
-    state.timeRemaining += 2.0; // 1토큰당 2초 연장!
+    state.timeRemaining += 2.0;
     SoundFX.extendTime();
     setLog(`[시간 연장] 토큰 1개 소모 ➡️ 생존시간 +2초 확보! (${state.timeRemaining.toFixed(1)}s)`);
     updateUI();
   }
 
-  // ===== 8. 왼쪽 문 다이얼 투입 & 빈 방 클리어 로직 (요구사항 5, 6) =====
+  // ===== 8. 왼쪽 문 다이얼 로직 =====
   function handleDialMinus() {
     if (state.doorDialAmount > 0) {
       state.doorDialAmount--;
@@ -498,21 +492,17 @@
       return;
     }
 
-    // 토큰 소모
     state.currentTokens -= amount;
-    const required = DIFFICULTY_PRESETS[state.activeDifficulty].targetTokens; // 5개 (표준)
+    const required = DIFFICULTY_PRESETS[state.activeDifficulty].targetTokens;
 
     if (amount === required) {
-      // 정확한 개수 투입 -> 문 개방!
       state.leftDoorOpen = true;
-      DOM.doorLeftImg.src = 'assets/door_open.png';
-      DOM.inspectDoorLeftImg.src = 'assets/door_open.png';
+      DOM.doorLeftImg.src = 'assets/door_open.webp';
       DOM.doorClosedPanel.style.display = 'none';
       DOM.doorOpenPanel.style.display = 'flex';
       SoundFX.doorOpen();
       setLog(`[문 개방] 철컥! 정확히 토큰 ${amount}개를 투입하여 문이 활짝 열렸습니다!`);
     } else {
-      // 정확하지 않은 개수 -> 누적되지 않고 토큰 소멸!
       SoundFX.doorFail();
       DOM.doorFeedbackMsg.textContent = `토큰 ${amount}개가 투입구 속으로 사라졌지만 문은 열리지 않았습니다... (토큰 소멸)`;
       DOM.doorFeedbackMsg.style.color = '#f87171';
@@ -524,13 +514,11 @@
     updateUI();
   }
 
-  // 열린 문 너머의 빈 방으로 들어가기
   function handleEnterLeftDoor() {
     openCloseup('emptyRoom');
     setLog('열린 문 너머의 빈 방으로 들어왔습니다. 가운데에 빈 버튼이 있습니다.');
   }
 
-  // 빈 방의 빈 버튼 클릭 -> "축하합니다. 게임 클리어" 안내창 노출 (게임은 계속 진행!)
   function handleBlankButtonClick() {
     SoundFX.clearFanfare();
     recordHistory('빈 방 클리어 (버튼 작동)', '정확한 5개 투입 후 빈 방 버튼 클릭');
@@ -542,9 +530,63 @@
     DOM.clearMessageModal.style.display = 'none';
   }
 
-  // ===== 9. 기타 오브젝트 상호작용 =====
+  // ===== 9. ★ 오른쪽 문 다이얼 로직 (왼쪽 문과 동일) =====
+  function handleRightDialMinus() {
+    if (state.rightDoorDialAmount > 0) {
+      state.rightDoorDialAmount--;
+      DOM.rightDialAmountNum.textContent = state.rightDoorDialAmount;
+      SoundFX.click();
+    }
+  }
 
-  // 상자 토큰 모두 회수
+  function handleRightDialPlus() {
+    state.rightDoorDialAmount++;
+    DOM.rightDialAmountNum.textContent = state.rightDoorDialAmount;
+    SoundFX.click();
+  }
+
+  function handleSubmitRightDial() {
+    if (state.status !== 'PLAYING') return;
+    if (state.rightDoorOpen) return;
+
+    const amount = state.rightDoorDialAmount;
+    if (amount <= 0) {
+      DOM.rightDoorFeedbackMsg.textContent = '투입할 토큰 수량을 1개 이상 맞춰주세요.';
+      DOM.rightDoorFeedbackMsg.style.color = '#f87171';
+      return;
+    }
+
+    if (state.currentTokens < amount) {
+      DOM.rightDoorFeedbackMsg.textContent = `소지 토큰이 부족합니다! (소지: ${state.currentTokens}개)`;
+      DOM.rightDoorFeedbackMsg.style.color = '#f87171';
+      return;
+    }
+
+    state.currentTokens -= amount;
+    const required = DIFFICULTY_PRESETS[state.activeDifficulty].targetTokens;
+
+    if (amount === required) {
+      state.rightDoorOpen = true;
+      DOM.doorRightImg.src = 'assets/door_open.webp';
+      DOM.doorRightClosedPanel.style.display = 'none';
+      SoundFX.doorOpen();
+      setLog(`[문 개방] 철컥! 정확히 토큰 ${amount}개를 투입하여 오른쪽 문이 열렸습니다!`);
+      
+      // 진엔딩 처리
+      setTimeout(() => handleTrueClear(), 500);
+    } else {
+      SoundFX.doorFail();
+      DOM.rightDoorFeedbackMsg.textContent = `토큰 ${amount}개가 투입구 속으로 사라졌지만 문은 열리지 않았습니다... (토큰 소멸)`;
+      DOM.rightDoorFeedbackMsg.style.color = '#f87171';
+      setLog(`[투입 실패] 토큰 ${amount}개가 소멸되었습니다.`);
+    }
+
+    state.rightDoorDialAmount = 0;
+    DOM.rightDialAmountNum.textContent = '0';
+    updateUI();
+  }
+
+  // ===== 10. 기타 오브젝트 상호작용 =====
   function handleTakeChest() {
     if (state.status !== 'PLAYING') return;
     if (persistentData.chestTokens <= 0) {
@@ -560,54 +602,19 @@
     updateUI();
   }
 
-  // 오른쪽 문 키패드
-  function handleKeyPress(digit) {
-    if (state.status !== 'PLAYING') return;
-    if (state.keypadInput.length >= 4) return;
-    state.keypadInput += digit;
-    SoundFX.keyPress();
-    renderKeypad();
-  }
-
-  function handleKeyClear() {
-    state.keypadInput = '';
-    SoundFX.keyPress();
-    renderKeypad();
-  }
-
-  function handleKeyEnter() {
-    if (state.status !== 'PLAYING') return;
-    if (state.keypadInput === PASSCODE_SECRET) {
-      handleTrueClear();
-    } else {
-      SoundFX.keyError();
-      DOM.keypadStatus.textContent = '❌ 암호 불일치!';
-      DOM.keypadStatus.style.color = '#f87171';
-      state.keypadInput = '';
-      renderKeypad();
-    }
-  }
-
-  function renderKeypad() {
-    const padded = (state.keypadInput + '____').slice(0, 4);
-    DOM.keypadScreen.textContent = padded.split('').join(' ');
-  }
-
-  // 진엔딩 (오른쪽 격벽)
   function handleTrueClear() {
     state.status = 'CLEAR_TRUE';
     if (backgroundIntervalId) clearInterval(backgroundIntervalId);
-    DOM.doorRightImg.src = 'assets/door_open.png';
     closeCloseup();
     SoundFX.trueClear();
-    recordHistory('보안문 해제 (진엔딩)', '4자리 암호 해제');
+    recordHistory('보안문 해제 (진엔딩)', '토큰 다이얼 해제');
 
     DOM.modalIcon.textContent = '🌌';
     DOM.modalTitle.textContent = '진정한 탈출!';
     DOM.modalTitle.style.color = '#34d399';
     DOM.modalContent.innerHTML = `
       <p style="font-size:1.05rem; color:#f1f5f9; font-weight:700;">
-        비밀 암호가 일치하며 보안문이 열리고 시설의 심층 구역으로 진입했습니다.
+        정확한 수량의 토큰이 투입되며 보안문이 열리고 시설의 심층 구역으로 진입했습니다.
       </p>
       <div style="background:rgba(52, 211, 153, 0.12); padding:14px; border-radius:8px; margin:16px 0; font-size:0.92rem;">
         ⏱️ 달성 시간: <strong>${state.totalPlaySeconds.toFixed(1)}초</strong><br>
@@ -618,7 +625,6 @@
     updateUI();
   }
 
-  // 게임오버 (30초 종료)
   function handleGameOver() {
     state.status = 'GAME_OVER';
     if (backgroundIntervalId) clearInterval(backgroundIntervalId);
@@ -662,7 +668,7 @@
     DOM.historyBadge.textContent = persistentData.history.length;
   }
 
-  // ===== 10. UI 동기화 =====
+  // ===== 11. UI 동기화 =====
   function updateUI() {
     DOM.timeDisplay.textContent = `${state.timeRemaining.toFixed(1)}s`;
     DOM.tokenDisplay.textContent = state.currentTokens;
@@ -682,10 +688,9 @@
     DOM.btnReducedMotion.textContent = persistentData.isReducedMotion ? '🛑 연출 끔' : '✨ 연출 켬';
   }
 
-  // ===== 11. 이벤트 바인딩 =====
+  // ===== 12. 이벤트 바인딩 =====
   DOM.btnStartGame.addEventListener('click', handleGameStartButtonClick);
 
-  // 룸 오브젝트 클릭
   DOM.propDoorLeft.addEventListener('click', () => {
     openCloseup('doorLeft');
     setLog(state.leftDoorOpen ? '열려 있는 문을 바라봅니다.' : '문을 조사합니다.');
@@ -704,7 +709,7 @@
   });
   DOM.propDoorRight.addEventListener('click', () => {
     openCloseup('doorRight');
-    setLog('문을 조사합니다.');
+    setLog(state.rightDoorOpen ? '열려 있는 문을 바라봅니다.' : '문을 조사합니다.');
   });
 
   DOM.btnCloseCloseup.addEventListener('click', closeCloseup);
@@ -723,23 +728,19 @@
   DOM.btnSubmitDial.addEventListener('click', handleSubmitDial);
   DOM.btnEnterLeftDoor.addEventListener('click', handleEnterLeftDoor);
 
-  // 빈 방 조작 (요구사항 6)
+  // 오른쪽 문 다이얼 조작 (추가)
+  DOM.btnRightDialMinus.addEventListener('click', handleRightDialMinus);
+  DOM.btnRightDialPlus.addEventListener('click', handleRightDialPlus);
+  DOM.btnSubmitRightDial.addEventListener('click', handleSubmitRightDial);
+
+  // 빈 방 조작
   DOM.btnBlankClear.addEventListener('click', handleBlankButtonClick);
   DOM.btnReturnToMainRoom.addEventListener('click', () => {
     openCloseup('doorLeft');
   });
   DOM.btnCloseClearMessage.addEventListener('click', handleCloseClearMessage);
 
-  // 상자 회수
   DOM.btnTakeChest.addEventListener('click', handleTakeChest);
-
-  // 키패드
-  document.querySelectorAll('.key-btn[data-key]').forEach(btn => {
-    btn.addEventListener('click', () => handleKeyPress(btn.getAttribute('data-key')));
-  });
-  DOM.btnKeyClear.addEventListener('click', handleKeyClear);
-  DOM.btnKeyEnter.addEventListener('click', handleKeyEnter);
-
   DOM.btnRestartGame.addEventListener('click', prepareRestart);
 
   // 음소거 & 연출 토글
@@ -770,7 +771,7 @@
     }
   });
 
-  // 난이도 전환 (카드 3)
+  // 난이도 전환
   DOM.btnDiffA.addEventListener('click', () => {
     state.activeDifficulty = 'A';
     persistentData.activeDifficulty = 'A';
@@ -840,7 +841,7 @@
     DOM.historyModal.style.display = 'flex';
   }
 
-  // 단축키 (R: 재시작, Esc: 닫기)
+  // 단축키
   window.addEventListener('keydown', (e) => {
     if (e.key === 'r' || e.key === 'R') {
       if (state.status === 'GAME_OVER' || state.status === 'CLEAR_TRUE') {
@@ -852,7 +853,7 @@
     }
   });
 
-  // ===== 12. 초기화 구동 =====
+  // ===== 13. 초기화 구동 =====
   loadPersistentData();
   state.activeDifficulty = persistentData.activeDifficulty || 'A';
   if (state.activeDifficulty === 'B') {
