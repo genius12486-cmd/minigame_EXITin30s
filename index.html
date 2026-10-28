@@ -3,91 +3,140 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>방탈출 로그라이크 : 더 머신 (The Machine)</title>
+  <title>30초 안에 탈출하라</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="gameApp" class="escape-game-wrap">
 
-    <!-- 상단 HUD : 가운데 대형 30초 타이머 -->
-    <header class="hud-top">
-      <div class="hud-left">
-        <h1 class="game-logo">더 머신</h1>
-        <div class="hud-badge token-badge">
-          <span class="badge-icon">🪙</span>
-          <span class="badge-label">소지 토큰:</span>
-          <strong class="badge-val" id="tokenDisplay">0</strong>
-        </div>
-        <div class="hud-badge chest-badge">
-          <span class="badge-icon">📦</span>
-          <span class="badge-label">상자 보관:</span>
-          <strong class="badge-val" id="chestDisplay">0</strong>
+    <!-- 우측 상단 구석 설정 버튼 -->
+    <div class="corner-controls">
+      <div class="volume-control-wrap">
+        <button id="btnMute" class="corner-btn" title="음소거 / 볼륨">🔊</button>
+        <div class="volume-slider-panel" id="volumeSliderPanel">
+          <input type="range" id="volumeSlider" min="0" max="100" value="60" step="1" orient="vertical">
+          <span class="volume-value" id="volumeValueText">60</span>
         </div>
       </div>
+      <button id="btnPause" class="corner-btn" title="일시정지">⏸️</button>
+      <button id="btnReducedMotion" class="corner-btn" title="연출 줄이기">✨</button>
+      <button id="btnResetSave" class="corner-btn danger" title="저장 데이터 초기화">🔄</button>
+      <button id="btnOpenHistory" class="corner-btn" title="기록">📊<span id="historyBadge" class="corner-badge">0</span></button>
+    </div>
 
-      <div class="hud-center-timer" id="hudTimer">
-        <span class="timer-sublabel">⏱️ 잔여 산소 시간</span>
-        <div class="timer-big-display" id="timeDisplay">30.0s</div>
-      </div>
+    <!-- 타이머 -->
+    <div class="timer-above-stage" id="hudTimer">
+      <div class="timer-big-display" id="timeDisplay">30.0s</div>
+    </div>
 
-      <div class="hud-right">
-        <button id="btnMute" class="hud-btn" title="음소거 토글">🔊 소리 켬</button>
-        <button id="btnReducedMotion" class="hud-btn" title="연출 줄이기">✨ 연출 켬</button>
-        <button id="btnResetSave" class="hud-btn danger" title="저장 데이터 초기화">🔄 초기화</button>
-      </div>
-    </header>
-
-    <!-- 메인 뷰포트 -->
     <main class="room-viewport" id="roomViewport">
       <div class="room-stage" id="roomStage">
-        <!-- 1. 빈 방 배경 -->
-        <img src="assets/room_empty.webp" alt="밀실 배경" class="layer-bg">
+        <img src="assets/room_empty.webp" alt="밀실 배경" class="layer-bg" id="roomBgImg">
 
-        <!-- 2. 왼쪽 문 -->
-        <div class="room-prop prop-door-left" id="propDoorLeft" title="문">
-          <img src="assets/door_closed.webp" alt="문" id="doorLeftImg">
-          <div class="obj-indicator">문</div>
+        <div class="in-stage-top-left">
+          <div class="in-stage-token-badge">
+            <span class="stage-token-icon">🪙</span>
+            <span class="stage-token-val" id="tokenDisplay">0</span>
+          </div>
+          <div class="in-stage-mode-badge" id="modeBadge" style="display:none;">시연용 모드</div>
         </div>
 
-        <!-- 3. 침대 (클릭 불가) -->
-        <div class="room-prop prop-bed static-scenery">
-          <img src="assets/bed.webp" alt="침대">
+        <!-- 처음방 -->
+        <div id="mainRoomObjects" class="room-objects-set">
+          <div class="room-prop prop-door-left" id="propDoorLeft" title="문">
+            <img src="assets/door_closed.webp" alt="문" id="doorLeftImg" class="flip-h">
+            <div class="obj-indicator">문</div>
+          </div>
+          <div class="room-prop prop-bed static-scenery">
+            <img src="assets/bed.webp" alt="침대">
+          </div>
+          <div class="room-prop prop-desk" id="propDesk" title="일지">
+            <img src="assets/desk.webp" alt="일지">
+            <div class="obj-indicator">일지</div>
+          </div>
+          <div class="room-prop prop-chest" id="propChest" title="상자">
+            <img src="assets/chest.webp" alt="상자">
+            <div class="obj-indicator">상자</div>
+          </div>
+          <div class="room-prop prop-machine" id="propMachine" title="기계">
+            <img src="assets/machine.webp" alt="기계">
+            <div class="obj-indicator">기계</div>
+          </div>
+          <div class="room-prop prop-door-right" id="propDoorRight" title="문">
+            <img src="assets/door_closed.webp" alt="문" id="doorRightImg" class="flip-h">
+            <div class="obj-indicator">문</div>
+          </div>
         </div>
 
-        <!-- 4. 책상 -->
-        <div class="room-prop prop-desk" id="propDesk" title="책상">
-          <img src="assets/desk.webp" alt="책상" class="desk-body">
-          <div class="obj-indicator">책상</div>
+        <!-- 축하방 -->
+        <div id="celebrationRoomObjects" class="room-objects-set" style="display:none;">
+          <div class="room-prop celebration-desk" id="propCelebrationDesk" title="일지">
+            <img src="assets/desk.webp" alt="일지">
+            <div class="obj-indicator">일지</div>
+          </div>
+          <div class="room-prop celebration-chest" id="propCelebrationChest" title="상자">
+            <img src="assets/chest.webp" alt="상자">
+            <div class="obj-indicator">상자</div>
+          </div>
+          <div class="room-prop celebration-door" id="propCelebrationDoor" title="문">
+            <img src="assets/door_open.webp" alt="문" id="celebrationDoorImg" class="flip-h">
+            <div class="obj-indicator">문</div>
+          </div>
         </div>
 
-        <!-- 5. 상자 -->
-        <div class="room-prop prop-chest" id="propChest" title="상자">
-          <img src="assets/chest.webp" alt="상자" id="chestImg">
-          <div class="obj-indicator">상자</div>
+        <!-- 복도 -->
+        <div id="corridorRoomObjects" class="room-objects-set" style="display:none;">
+          <div class="room-prop corridor-door" id="propCorridorDoor" title="문">
+            <img src="assets/door_open.webp" alt="문" id="corridorDoorImg" class="flip-h">
+            <div class="obj-indicator">문</div>
+          </div>
+          <div class="room-prop corridor-exit" id="propCorridorExit" title="EXIT">
+            <div class="exit-arrow">
+              <span class="exit-text">EXIT</span>
+              <span class="exit-arrow-icon">⇨</span>
+            </div>
+            <div class="obj-indicator">EXIT</div>
+          </div>
         </div>
 
-        <!-- 6. 기계 -->
-        <div class="room-prop prop-machine" id="propMachine" title="기계">
-          <img src="assets/machine.webp" alt="기계" id="machineImg">
-          <div class="obj-indicator">기계</div>
-        </div>
-
-        <!-- 7. 오른쪽 문 -->
-        <div class="room-prop prop-door-right" id="propDoorRight" title="문">
-          <img src="assets/door_closed.webp" alt="문" id="doorRightImg" class="flip-h">
-          <div class="obj-indicator">문</div>
-        </div>
+        <!-- 바깥 -->
+        <div id="outsideRoomObjects" class="room-objects-set" style="display:none;"></div>
       </div>
 
-      <!-- 시작 전 대기 화면 -->
+      <!-- 페이드 오버레이 -->
+      <div class="fade-to-clear-overlay" id="fadeToClearOverlay"></div>
+
+      <!-- 색종이 컨테이너 -->
+      <div class="confetti-container" id="confettiContainer"></div>
+
+      <!-- 시작 화면 -->
       <div class="start-screen-overlay" id="startScreenOverlay">
         <div class="start-card">
-          <div class="start-icon">⏳</div>
-          <h2>더 머신</h2>
+          <div class="start-icon">🚪🏃🚪</div>
+          <h2 class="start-title"></h2>
+          <h3 class="start-subtitle">30초 안에 탈출하라</h3>
           <p class="start-desc">
-            제한 시간은 단 <strong>30초</strong>.<br>
-            준비가 되면 시작 버튼을 누르세요.
+              마우스만을 이용해 진행합니다.
           </p>
+
+          <div class="mode-select-col">
+            <span class="mode-select-label"></span>
+            <div class="mode-buttons-center">
+              <div class="mode-buttons-row">
+                <button id="btnModeNormal" class="btn-mode active">표준 모드</button>
+                <div class="mode-demo-inline">
+                  <button id="btnModeDemo" class="btn-mode">시연용 모드</button>
+                  <span class="mode-help-wrap" id="modeHelpWrap">
+                    <button class="mode-help-btn" id="btnModeHelp" aria-label="시연용 모드 설명">?</button>
+                    <span class="mode-help-tooltip" id="modeHelpTooltip">
+                      반복 플레이를 최소화하여 빠르게 클리어할 수 있도록 밸런스를 조정한 모드입니다.
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <button id="btnStartGame" class="btn-start-action">▶️ 게임 시작</button>
         </div>
       </div>
@@ -95,34 +144,60 @@
       <!-- 클로즈업 레이어 -->
       <div class="closeup-layer" id="closeupLayer" style="display: none;">
         <div class="closeup-box" id="closeupBox">
-          <!-- X 버튼 위치 상향 조정 -->
           <button class="btn-close-view" id="btnCloseCloseup" title="닫기">✖</button>
 
-          <!-- [뷰 1] 왼쪽 문 (이미지 제거, 다이얼만) -->
-          <div class="inspect-view" id="viewDoorLeft" style="display: none;">
+          <div class="inspect-view" id="viewDoorAClosed" style="display: none;">
             <div class="door-interactive-box">
-              <!-- 문 이미지 삭제됨 -->
-              <div id="doorClosedPanel" class="door-input-panel">
-                <p class="door-instruction">다이얼로 투입할 토큰 수를 맞추고 '넣기'를 누르세요.</p>
-                <div class="token-dial-selector">
-                  <button id="btnDialMinus" class="dial-arrow-btn">◀</button>
-                  <div class="dial-amount-display">
-                    <span class="amount-num" id="dialAmountNum">0</span>
-                    <span class="amount-unit">개</span>
-                  </div>
-                  <button id="btnDialPlus" class="dial-arrow-btn">▶</button>
-                </div>
-                <button id="btnSubmitDial" class="btn-clean-action highlight">넣기</button>
-                <p class="door-feedback-msg" id="doorFeedbackMsg"></p>
+              <p class="door-instruction"></p>
+              <div class="two-digit-dial">
+                <button class="digit-arrow up" data-target="A" data-place="tens">▲</button>
+                <button class="digit-arrow up" data-target="A" data-place="ones">▲</button>
               </div>
-              <div id="doorOpenPanel" class="door-open-panel" style="display: none;">
-                <p class="door-opened-text">철컥! 문이 활짝 열렸습니다.</p>
-                <button id="btnEnterLeftDoor" class="btn-clean-action highlight enter-btn">방 안으로 들어가기 ➡️</button>
+              <div class="two-digit-display">
+                <span class="digit-slot" id="doorATens">0</span>
+                <span class="digit-slot" id="doorAOnes">0</span>
+              </div>
+              <div class="two-digit-dial">
+                <button class="digit-arrow down" data-target="A" data-place="tens">▼</button>
+                <button class="digit-arrow down" data-target="A" data-place="ones">▼</button>
+              </div>
+              <button id="btnSubmitDoorA" class="btn-clean-action highlight">토큰 넣기</button>
+              <p class="door-feedback-msg" id="doorAFeedbackMsg"></p>
+            </div>
+          </div>
+
+          <div class="inspect-view" id="viewDoorBClosed" style="display: none;">
+            <div class="door-interactive-box">
+              <p class="door-instruction"> </p>
+              <div class="two-digit-dial">
+                <button class="digit-arrow up" data-target="B" data-place="tens">▲</button>
+                <button class="digit-arrow up" data-target="B" data-place="ones">▲</button>
+              </div>
+              <div class="two-digit-display">
+                <span class="digit-slot" id="doorBTens">0</span>
+                <span class="digit-slot" id="doorBOnes">0</span>
+              </div>
+              <div class="two-digit-dial">
+                <button class="digit-arrow down" data-target="B" data-place="tens">▼</button>
+                <button class="digit-arrow down" data-target="B" data-place="ones">▼</button>
+              </div>
+              <button id="btnSubmitDoorB" class="btn-clean-action highlight">토큰 넣기</button>
+              <p class="door-feedback-msg" id="doorBFeedbackMsg"></p>
+            </div>
+          </div>
+
+          <div class="inspect-view" id="viewDoorOpen" style="display: none;">
+            <div class="door-open-panel-new">
+              <div class="door-open-img-wrap">
+                <img src="assets/door_open.webp" alt="열린 문" class="door-open-img flip-h">
+              </div>
+              <div class="door-open-btns">
+                <button id="btnEnterDoor" class="btn-clean-action highlight">들어가기</button>
+                <button id="btnCloseDoor" class="btn-clean-action">문 닫기</button>
               </div>
             </div>
           </div>
 
-          <!-- [뷰 2] 기계 -->
           <div class="inspect-view" id="viewMachine" style="display: none;">
             <div class="machine-user-layout">
               <div class="machine-col-left">
@@ -145,112 +220,71 @@
               <div class="machine-col-right">
                 <div class="extend-card-block">
                   <p class="extend-info-text">
-                    토큰을 1개 소모하여<br>
-                    생존시간을 2초 늘릴<br>
-                    수 있습니다.
+                    토큰을 1개 소모하여<br>시간을 2초 늘릴<br>수 있습니다.
                   </p>
                   <button id="btnExtend" class="btn-extend-action">
-                    생존시간 2초 늘리기<br>
-                    <span class="sub-cost">(토큰 1개)</span>
+                    시간 2초 늘리기<br><span class="sub-cost">(토큰 1개)</span>
                   </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- [뷰 3] 책상 -->
           <div class="inspect-view" id="viewDesk" style="display: none;">
             <div class="diary-simple">
-              <p>• <strong>기계</strong> : 1번부터 8번까지 시계 방향으로 누르면 토큰 1개를 얻습니다.</p>
-              <p>• <strong>시간 연장</strong> : 토큰 1개로 산소 시간을 2초 늘릴 수 있습니다.</p>
-              <p>• <strong>상자</strong> : 시간이 다 되어 쓰러져도 모아둔 토큰은 상자에 보존됩니다.</p>
-              <p>• <strong>문</strong> : 방에는 두 개의 문이 있습니다. 두 문 모두 정확한 수량의 토큰(5개)을 투입해야 열립니다.</p>
+              <p><strong class="note-title">일기</strong></p>
+              <p>빌어먹을! 이게 벌써 몇번째 반복되는건지 모르겠다. 타이머가 끝나면 나는 정신을 잃고 기절한다. 
+                눈을 뜨면 다시 이 침대다. 누가 날 옮겨놓는걸까? 그렇지만 계속 반복되는 이 시간을 활용해서 몇가지 알아낸게 있다.<br><br></p>
+              <p>1. 오른쪽 <strong>기계에서 작업을 한 만큼 토큰</strong>이 나온다.</p>
+              <p>2. <strong>왼쪽 문</strong>의 암호는 <strong>5</strong>이다. 저기가 바로 탈출구인걸까? </p>
+              <p>3. 내가 <strong>기절하고 깨어나면</strong> 가지고있던 토큰을 누군가가 <strong>옆 상자</strong>에 쌓아놓는다.<br><br></p>
+              <p>아, 일기를 적다보니 벌써 시간이... 다시 깨어나면 <strong>옆 상자부터 확인</strong>해야겠군.</p>
             </div>
           </div>
 
-          <!-- [뷰 4] 상자 -->
           <div class="inspect-view" id="viewChest" style="display: none;">
             <div class="vault-box">
               <span class="vault-label">보관된 토큰:</span>
               <div class="vault-digits"><strong id="crateCountText">0</strong> <small>개</small></div>
             </div>
             <div class="inspect-actions">
-              <button id="btnTakeChest" class="btn-clean-action highlight">상자 토큰 모두 꺼내기</button>
+              <button id="btnTakeChest" class="btn-clean-action highlight">모두 가져간다</button>
             </div>
           </div>
 
-          <!-- [뷰 5] ★ 오른쪽 문 (키패드 삭제, 왼쪽 문과 동일한 다이얼 방식으로 변경) -->
-          <div class="inspect-view" id="viewDoorRight" style="display: none;">
-            <div class="door-interactive-box">
-              <div id="doorRightClosedPanel" class="door-input-panel">
-                <p class="door-instruction">다이얼로 투입할 토큰 수를 맞추고 '넣기'를 누르세요.</p>
-                <div class="token-dial-selector">
-                  <button id="btnRightDialMinus" class="dial-arrow-btn">◀</button>
-                  <div class="dial-amount-display">
-                    <span class="amount-num" id="rightDialAmountNum">0</span>
-                    <span class="amount-unit">개</span>
-                  </div>
-                  <button id="btnRightDialPlus" class="dial-arrow-btn">▶</button>
-                </div>
-                <button id="btnSubmitRightDial" class="btn-clean-action highlight">넣기</button>
-                <p class="door-feedback-msg" id="rightDoorFeedbackMsg"></p>
+          <div class="inspect-view" id="viewCelebrationChest" style="display: none;">
+            <div class="celebration-chest-content">
+              <p class="celebration-chest-note">
+                <strong class="note-title">메모</strong><br>
+                드디어 알아냈다. 뭐? 클리어? 하하. 난 너한테 놀아나지 않아.<br>
+                <strong>진짜 탈출구</strong>는 따로 있었어. 암호는 <strong>12</strong>.<br>
+                이제 탈출만 하면 돼! 어? 근데 남은 시간이? 2..1...
+                <em>(메모는 여기서 끊겨있다.)</em>
+              </p>
+              <div class="celebration-chest-reward" id="celebrationChestRewardBox">
+                <div class="token-reward-icons" id="celebrationTokenIcons"></div>
+                <button id="btnClaimCelebrationChest" class="btn-clean-action highlight">모두 가져간다</button>
+                <p class="celebration-chest-claimed" id="celebrationChestClaimedText" style="display:none;">비어있다</p>
               </div>
             </div>
           </div>
 
-          <!-- [뷰 6] 빈 방 -->
-          <div class="inspect-view" id="viewEmptyRoom" style="display: none;">
-            <div class="empty-room-container">
-              <div class="empty-room-inner">
-                <button id="btnBlankClear" class="blank-center-btn" title="빈 버튼"></button>
-              </div>
-              <div class="empty-room-footer">
-                <button id="btnReturnToMainRoom" class="btn-clean-action">◀ 이전 방으로 돌아가기</button>
-              </div>
-            </div>
+          <div class="inspect-view" id="viewCelebrationClear" style="display: none;">
+            <div class="celebration-clear-msg">축하합니다. 클리어했습니다^^</div>
           </div>
 
         </div>
       </div>
     </main>
 
-    <!-- 하단 상태 바 -->
-    <footer class="hud-bottom">
-      <div class="log-display">
-        <span class="log-tag">조사 기록:</span>
-        <span class="log-content" id="statusLogText">방 안의 사물을 조사하세요.</span>
-      </div>
-
-      <div class="test-panel">
-        <span class="diff-label">난이도:</span>
-        <button id="btnDiffA" class="btn-diff active">설정 A (5개)</button>
-        <button id="btnDiffB" class="btn-diff">설정 B (10개)</button>
-        <button id="btnOpenHistory" class="btn-diff record-btn">📊 기록 (<span id="historyBadge">0</span>)</button>
-      </div>
-    </footer>
-
-    <!-- 모달들 -->
+    <!-- 결과 모달 -->
     <div class="modal-overlay" id="resultModal" style="display: none;">
-      <div class="modal-card">
-        <div class="modal-icon" id="modalIcon">🎉</div>
-        <h2 id="modalTitle">탈출 성공!</h2>
-        <div class="modal-content" id="modalContent"></div>
-        <div class="modal-actions">
-          <button id="btnRestartGame" class="btn-clean-action highlight modal-btn">다시 하기</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal-overlay" id="clearMessageModal" style="display: none;">
-      <div class="modal-card">
-        <div class="modal-icon">🎉</div>
-        <h2>축하합니다. 게임 클리어</h2>
-        <p class="modal-content" style="margin-bottom: 24px;">
-          빈 방의 버튼이 눌렸습니다.<br>
-          창을 닫고 계속해서 방을 탐색할 수 있습니다.
-        </p>
-        <div class="modal-actions">
-          <button id="btnCloseClearMessage" class="btn-clean-action highlight modal-btn">확인 (계속 플레이)</button>
+      <div class="modal-card" id="resultModalCard">
+        <div class="modal-icon" id="modalIcon">💨</div>
+        <h2 id="modalTitle">시간 초과</h2>
+        <div class="modal-content" id="modalContent"> </div>
+        <div class="modal-actions" id="resultModalActions">
+          <button id="btnRestartGame" class="btn-restart-small">다시 하기</button>
         </div>
       </div>
     </div>
@@ -258,17 +292,12 @@
     <div class="modal-overlay" id="historyModal" style="display: none;">
       <div class="modal-card wide">
         <h2>📊 플레이 검증 기록표</h2>
-        <p class="desc">설정 A(5개)와 설정 B(10개) 플레이 기록을 확인하고 복사할 수 있습니다.</p>
+        <p class="desc">플레이 기록을 확인하고 복사할 수 있습니다.</p>
         <div class="table-wrap">
           <table class="history-table">
             <thead>
               <tr>
-                <th>#</th>
-                <th>설정</th>
-                <th>결과</th>
-                <th>소요 시간</th>
-                <th>토큰</th>
-                <th>상세 원인</th>
+                <th>#</th><th>모드</th><th>결과</th><th>소요 시간</th><th>토큰</th><th>상세 원인</th>
               </tr>
             </thead>
             <tbody id="historyTableBody"></tbody>
@@ -279,6 +308,14 @@
           <button id="btnClearHistory" class="btn-clean-action danger">기록 초기화</button>
           <button id="btnCloseHistory" class="btn-clean-action highlight">닫기</button>
         </div>
+      </div>
+    </div>
+        <!-- 일시정지 오버레이 -->
+    <div class="pause-overlay" id="pauseOverlay" style="display: none;">
+      <div class="pause-card">
+        <h2>⏸️ 일시정지</h2>
+        <p>게임이 일시정지되었습니다.</p>
+        <button id="btnResumeGame" class="btn-start-action" style="min-width: 200px; font-size: 1.1rem; margin-top: 20px;">계속하기</button>
       </div>
     </div>
 

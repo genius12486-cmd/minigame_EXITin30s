@@ -1,216 +1,200 @@
 /**
- * 방탈출 로그라이크 : 더 머신 (The Machine)
- * 8버튼 회전 미니게임 & 다이얼 투입 문 & 빈 방 클리어 엔진
+ * 방탈출 로그라이크 : 30초 안에 탈출하라
  */
 
 (() => {
   'use strict';
 
-  // ===== 1. 핵심 설정 및 상수 =====
-  const STORAGE_KEY = 'THE_MACHINE_SAVE_V6';
+  // ===== 상수 =====
+  const STORAGE_KEY = 'THE_MACHINE_SAVE_V19';
+  const TARGET_TOKENS_A = 5;
+  const TARGET_TOKENS_B = 12;
+  const BASE_TIME = 30.0;
+  const DEMO_TOKEN_PER_CLEAR = 3;
+  const NORMAL_TOKEN_PER_CLEAR = 2;
+  const CELEBRATION_CHEST_TOKENS = 12;
+  const CONFETTI_COLORS = [
+    '#fbbf24', '#f87171', '#34d399', '#38bdf8', '#c084fc',
+    '#facc15', '#fb923c', '#a3e635', '#f472b6', '#e2e8f0'
+  ];
+  const CONFETTI_DURATION_MS = 2600;
 
-  // 난이도 단일 수치 변수: 문 개방에 필요한 정확한 토큰 수 (카드 3)
-  const DIFFICULTY_PRESETS = {
-    A: { name: '설정 A (표준 5개)', targetTokens: 5 },
-    B: { name: '설정 B (어려움 10개)', targetTokens: 10 }
-  };
-
-  // 런타임 게임 상태
   let state = {
-    status: 'READY', // 'READY', 'PLAYING', 'CLEAR_TRUE', 'GAME_OVER'
-    timeRemaining: 30.0,
+    status: 'READY',
+    timeRemaining: BASE_TIME,
     currentTokens: 0,
-    activeDifficulty: 'A',
+    gameMode: 'normal',
+    currentRoom: 'main',
+    isPaused: false,           // ★ 추가: 일시정지 여부
 
-    // 왼쪽 문 다이얼 투입 및 개방 상태
-    leftDoorOpen: false,
-    doorDialAmount: 0,
+    doorAOpen: false,
+    doorADialTens: 0,
+    doorADialOnes: 0,
 
-    // 오른쪽 문 다이얼 투입 및 개방 상태 (추가)
-    rightDoorOpen: false,
-    rightDoorDialAmount: 0,
+    doorBOpen: false,
+    doorBDialTens: 0,
+    doorBDialOnes: 0,
 
-    // 8버튼 원형 다이얼 미니게임 (1~8)
+    activeDoor: null,
+    exitPending: false,
+
     dialStep: 1,
     gearAngle: 0,
-
-    // 현재 열려있는 줌인 뷰
     currentView: 'none',
-
     totalPlaySeconds: 0
   };
 
-  // 영구 보존 상태 (localStorage - 카드 4)
   let persistentData = {
-    chestTokens: 0,
+    chestTokens: 2,
+    celebrationChestClaimed: false,
     isMuted: false,
+    volume: 0.6,
     isReducedMotion: false,
-    activeDifficulty: 'A',
     history: []
   };
 
   let lastRealTime = 0;
   let animationFrameId = null;
   let backgroundIntervalId = null;
+  let exitEndingTimer1 = null;
+  let exitEndingTimer2 = null;
 
-  // ===== 2. 무음원 Web Audio API 사운드 합성 =====
+  // ===== 사운드 =====
   let audioCtx = null;
   function getAudioContext() {
     if (!audioCtx) {
-      const AudioClass = window.AudioContext || window.webkitAudioContext;
-      if (AudioClass) audioCtx = new AudioClass();
+      const A = window.AudioContext || window.webkitAudioContext;
+      if (A) audioCtx = new A();
     }
-    if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     return audioCtx;
   }
-
-  function playTone(freq, type = 'sine', duration = 0.08, gainVal = 0.08) {
+  function playTone(freq, type='sine', dur=0.08, gainVal=0.08) {
     if (persistentData.isMuted) return;
+    if (persistentData.volume <= 0) return;
     try {
-      const ctx = getAudioContext();
-      if (!ctx) return;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      gain.gain.setValueAtTime(gainVal, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + duration);
-    } catch (e) {}
+      const ctx = getAudioContext(); if (!ctx) return;
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = type; osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      const finalGain = gainVal * persistentData.volume;
+      gain.gain.setValueAtTime(finalGain, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + dur);
+    } catch(e){}
   }
-
   const SoundFX = {
-    click: () => playTone(600, 'sine', 0.05, 0.05),
-    dialStep: (step) => playTone(400 + step * 60, 'sine', 0.06, 0.07),
-    dialComplete: () => {
-      playTone(784, 'triangle', 0.1, 0.1);
-      setTimeout(() => playTone(1046, 'triangle', 0.15, 0.12), 80);
-    },
-    dialError: () => playTone(180, 'sawtooth', 0.2, 0.12),
-    extendTime: () => {
-      playTone(587.33, 'sine', 0.08, 0.08);
-      setTimeout(() => playTone(880, 'sine', 0.12, 0.09), 70);
-    },
-    doorOpen: () => {
-      playTone(400, 'triangle', 0.15, 0.1);
-      setTimeout(() => playTone(600, 'triangle', 0.2, 0.12), 120);
-    },
-    doorFail: () => playTone(150, 'sawtooth', 0.3, 0.15),
-    claimChest: () => {
-      playTone(440, 'square', 0.1, 0.06);
-      setTimeout(() => playTone(880, 'square', 0.15, 0.08), 100);
-    },
+    click: () => playTone(600,'sine',0.05,0.05),
+    dialStep: (s) => playTone(400+s*60,'sine',0.06,0.07),
+    dialComplete: () => { playTone(784,'triangle',0.1,0.1); setTimeout(()=>playTone(1046,'triangle',0.15,0.12),80); },
+    dialError: () => playTone(180,'sawtooth',0.2,0.12),
+    extendTime: () => { playTone(587.33,'sine',0.08,0.08); setTimeout(()=>playTone(880,'sine',0.12,0.09),70); },
+    doorOpen: () => { playTone(400,'triangle',0.15,0.1); setTimeout(()=>playTone(600,'triangle',0.2,0.12),120); },
+    doorFail: () => playTone(150,'sawtooth',0.3,0.15),
+    claimChest: () => { playTone(440,'square',0.1,0.06); setTimeout(()=>playTone(880,'square',0.15,0.08),100); },
     clearFanfare: () => {
-      const melody = [523, 659, 783, 1046, 1318];
-      melody.forEach((f, i) => {
-        setTimeout(() => playTone(f, 'sine', 0.2, 0.14), i * 120);
-      });
+      [523,659,783,1046,1318].forEach((f,i)=>setTimeout(()=>playTone(f,'sine',0.2,0.14),i*120));
     },
-    trueClear: () => {
-      [330, 392, 493, 587, 659].forEach((f, i) => {
-        setTimeout(() => playTone(f, 'triangle', 0.35, 0.12), i * 180);
-      });
+    escapeFanfare: () => {
+      [392,523,659,783,1046,1318,1568].forEach((f,i)=>setTimeout(()=>playTone(f,'triangle',0.35,0.14),i*140));
     },
-    gameOver: () => {
-      playTone(180, 'sawtooth', 0.4, 0.15);
-      setTimeout(() => playTone(120, 'sawtooth', 0.6, 0.2), 300);
-    }
+    gameOver: () => { playTone(180,'sawtooth',0.4,0.15); setTimeout(()=>playTone(120,'sawtooth',0.6,0.2),300); }
   };
 
-  // ===== 3. DOM 요소 캐싱 =====
+  // ===== DOM =====
   const DOM = {
     timeDisplay: document.getElementById('timeDisplay'),
     hudTimer: document.getElementById('hudTimer'),
+    btnPause: document.getElementById('btnPause'),
     tokenDisplay: document.getElementById('tokenDisplay'),
-    chestDisplay: document.getElementById('chestDisplay'),
+    modeBadge: document.getElementById('modeBadge'),
     btnMute: document.getElementById('btnMute'),
+    btnPause: document.getElementById('btnPause'),
+    pauseOverlay: document.getElementById('pauseOverlay'),
+    btnResumeGame: document.getElementById('btnResumeGame'),
+    volumeSlider: document.getElementById('volumeSlider'),
+    volumeSliderPanel: document.getElementById('volumeSliderPanel'),
+    volumeValueText: document.getElementById('volumeValueText'),
     btnReducedMotion: document.getElementById('btnReducedMotion'),
     btnResetSave: document.getElementById('btnResetSave'),
-    statusLogText: document.getElementById('statusLogText'),
 
     startScreenOverlay: document.getElementById('startScreenOverlay'),
     btnStartGame: document.getElementById('btnStartGame'),
+    btnModeNormal: document.getElementById('btnModeNormal'),
+    btnModeDemo: document.getElementById('btnModeDemo'),
+    btnModeHelp: document.getElementById('btnModeHelp'),
+    modeHelpTooltip: document.getElementById('modeHelpTooltip'),
 
-    // 룸 오브젝트
+    roomBgImg: document.getElementById('roomBgImg'),
+    mainRoomObjects: document.getElementById('mainRoomObjects'),
+    celebrationRoomObjects: document.getElementById('celebrationRoomObjects'),
+    corridorRoomObjects: document.getElementById('corridorRoomObjects'),
+    outsideRoomObjects: document.getElementById('outsideRoomObjects'),
+    fadeToClearOverlay: document.getElementById('fadeToClearOverlay'),
+    confettiContainer: document.getElementById('confettiContainer'),
+
     propDoorLeft: document.getElementById('propDoorLeft'),
     doorLeftImg: document.getElementById('doorLeftImg'),
+    propDoorRight: document.getElementById('propDoorRight'),
+    doorRightImg: document.getElementById('doorRightImg'),
     propDesk: document.getElementById('propDesk'),
     propChest: document.getElementById('propChest'),
     propMachine: document.getElementById('propMachine'),
-    propDoorRight: document.getElementById('propDoorRight'),
-    doorRightImg: document.getElementById('doorRightImg'),
 
-    // 줌인 레이어 & 뷰
+    propCelebrationDoor: document.getElementById('propCelebrationDoor'),
+    celebrationDoorImg: document.getElementById('celebrationDoorImg'),
+    propCelebrationDesk: document.getElementById('propCelebrationDesk'),
+    propCelebrationChest: document.getElementById('propCelebrationChest'),
+
+    propCorridorDoor: document.getElementById('propCorridorDoor'),
+    corridorDoorImg: document.getElementById('corridorDoorImg'),
+    propCorridorExit: document.getElementById('propCorridorExit'),
+
     closeupLayer: document.getElementById('closeupLayer'),
     btnCloseCloseup: document.getElementById('btnCloseCloseup'),
-    
-    // 왼쪽 문 뷰
-    viewDoorLeft: document.getElementById('viewDoorLeft'),
-    doorClosedPanel: document.getElementById('doorClosedPanel'),
-    doorOpenPanel: document.getElementById('doorOpenPanel'),
-    btnDialMinus: document.getElementById('btnDialMinus'),
-    btnDialPlus: document.getElementById('btnDialPlus'),
-    dialAmountNum: document.getElementById('dialAmountNum'),
-    btnSubmitDial: document.getElementById('btnSubmitDial'),
-    doorFeedbackMsg: document.getElementById('doorFeedbackMsg'),
-    btnEnterLeftDoor: document.getElementById('btnEnterLeftDoor'),
 
-    // 기계 미니게임
+    viewDoorAClosed: document.getElementById('viewDoorAClosed'),
+    viewDoorBClosed: document.getElementById('viewDoorBClosed'),
+    viewDoorOpen: document.getElementById('viewDoorOpen'),
+    viewMachine: document.getElementById('viewMachine'),
+    viewDesk: document.getElementById('viewDesk'),
+    viewChest: document.getElementById('viewChest'),
+    viewCelebrationChest: document.getElementById('viewCelebrationChest'),
+    viewCelebrationClear: document.getElementById('viewCelebrationClear'),
+
+    doorATens: document.getElementById('doorATens'),
+    doorAOnes: document.getElementById('doorAOnes'),
+    doorBTens: document.getElementById('doorBTens'),
+    doorBOnes: document.getElementById('doorBOnes'),
+    btnSubmitDoorA: document.getElementById('btnSubmitDoorA'),
+    btnSubmitDoorB: document.getElementById('btnSubmitDoorB'),
+    doorAFeedbackMsg: document.getElementById('doorAFeedbackMsg'),
+    doorBFeedbackMsg: document.getElementById('doorBFeedbackMsg'),
+
+    btnEnterDoor: document.getElementById('btnEnterDoor'),
+    btnCloseDoor: document.getElementById('btnCloseDoor'),
+
     circleDial: document.getElementById('circleDial'),
     gearSpinner: document.getElementById('gearSpinner'),
     stepCounter: document.getElementById('stepCounter'),
     dialGuideText: document.getElementById('dialGuideText'),
-    dialBtns: [
-      document.getElementById('dBtn1'),
-      document.getElementById('dBtn2'),
-      document.getElementById('dBtn3'),
-      document.getElementById('dBtn4'),
-      document.getElementById('dBtn5'),
-      document.getElementById('dBtn6'),
-      document.getElementById('dBtn7'),
-      document.getElementById('dBtn8')
-    ],
+    dialBtns: [1,2,3,4,5,6,7,8].map(n => document.getElementById('dBtn'+n)),
     btnExtend: document.getElementById('btnExtend'),
 
-    // 기타 뷰
-    viewMachine: document.getElementById('viewMachine'),
-    viewDesk: document.getElementById('viewDesk'),
-    viewChest: document.getElementById('viewChest'),
     crateCountText: document.getElementById('crateCountText'),
     btnTakeChest: document.getElementById('btnTakeChest'),
 
-    // 오른쪽 문 뷰 (다이얼 방식)
-    viewDoorRight: document.getElementById('viewDoorRight'),
-    doorRightClosedPanel: document.getElementById('doorRightClosedPanel'),
-    btnRightDialMinus: document.getElementById('btnRightDialMinus'),
-    btnRightDialPlus: document.getElementById('btnRightDialPlus'),
-    rightDialAmountNum: document.getElementById('rightDialAmountNum'),
-    btnSubmitRightDial: document.getElementById('btnSubmitRightDial'),
-    rightDoorFeedbackMsg: document.getElementById('rightDoorFeedbackMsg'),
-
-    // 빈 방 뷰
-    viewEmptyRoom: document.getElementById('viewEmptyRoom'),
-    btnBlankClear: document.getElementById('btnBlankClear'),
-    btnReturnToMainRoom: document.getElementById('btnReturnToMainRoom'),
-
-    // 모달들
-    clearMessageModal: document.getElementById('clearMessageModal'),
-    btnCloseClearMessage: document.getElementById('btnCloseClearMessage'),
+    celebrationTokenIcons: document.getElementById('celebrationTokenIcons'),
+    btnClaimCelebrationChest: document.getElementById('btnClaimCelebrationChest'),
+    celebrationChestClaimedText: document.getElementById('celebrationChestClaimedText'),
 
     resultModal: document.getElementById('resultModal'),
+    resultModalCard: document.getElementById('resultModalCard'),
     modalIcon: document.getElementById('modalIcon'),
     modalTitle: document.getElementById('modalTitle'),
     modalContent: document.getElementById('modalContent'),
     btnRestartGame: document.getElementById('btnRestartGame'),
 
-    // 난이도 및 기록
-    btnDiffA: document.getElementById('btnDiffA'),
-    btnDiffB: document.getElementById('btnDiffB'),
     btnOpenHistory: document.getElementById('btnOpenHistory'),
     historyBadge: document.getElementById('historyBadge'),
     historyModal: document.getElementById('historyModal'),
@@ -220,436 +204,586 @@
     btnCloseHistory: document.getElementById('btnCloseHistory')
   };
 
-  // ===== 4. 로컬 저장소 안전 관리 =====
-  function loadPersistentData() {
+  // ===== 저장소 =====
+    function loadPersistentData() {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      savePersistentData();
-      return;
+    
+    // 1. 저장된 데이터가 아예 없는 경우 (최초 실행)
+    if (!raw) { 
+      persistentData.chestTokens = 2; // ★ 최초 1회 2개 지급
+      savePersistentData(); 
+      return; 
     }
+    
     try {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed.chestTokens === 'number' && !isNaN(parsed.chestTokens)) {
-        persistentData.chestTokens = Math.max(0, Math.floor(parsed.chestTokens));
+      const p = JSON.parse(raw);
+      if (typeof p.chestTokens === 'number' && !isNaN(p.chestTokens)) {
+        persistentData.chestTokens = Math.max(0, Math.floor(p.chestTokens));
       }
-      if (typeof parsed.isMuted === 'boolean') persistentData.isMuted = parsed.isMuted;
-      if (typeof parsed.isReducedMotion === 'boolean') persistentData.isReducedMotion = parsed.isReducedMotion;
-      if (parsed.activeDifficulty === 'A' || parsed.activeDifficulty === 'B') {
-        persistentData.activeDifficulty = parsed.activeDifficulty;
+      
+      // ★ 중요: 기존에 있던 '0개면 5개로 채워주는' 코드는 여기서 삭제했습니다.
+      // (새로고침으로 토큰을 무한 파밍하는 것을 막기 위함입니다)
+
+      if (typeof p.celebrationChestClaimed === 'boolean') persistentData.celebrationChestClaimed = p.celebrationChestClaimed;
+      if (typeof p.isMuted === 'boolean') persistentData.isMuted = p.isMuted;
+      if (typeof p.volume === 'number' && !isNaN(p.volume)) {
+        persistentData.volume = Math.min(1, Math.max(0, p.volume));
       }
-      if (Array.isArray(parsed.history)) {
-        persistentData.history = parsed.history.slice(0, 50);
-      }
+      if (typeof p.isReducedMotion === 'boolean') persistentData.isReducedMotion = p.isReducedMotion;
+      if (Array.isArray(p.history)) persistentData.history = p.history.slice(0, 50);
     } catch (e) {
       console.warn('[The Machine] 손상 저장값 감지, 기본값 복구', e);
+      persistentData.chestTokens = 2; // 에러 났을 때도 2개 지급
       savePersistentData();
     }
   }
-
   function savePersistentData() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(persistentData));
-    } catch (e) {
-      console.error('[The Machine] 저장 공간 오류:', e);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(persistentData)); }
+    catch (e) { console.error('[The Machine] 저장 오류:', e); }
+  }
+
+  // ===== 볼륨 UI =====
+  function updateVolumeUI() {
+    DOM.volumeSlider.value = Math.round(persistentData.volume * 100);
+    DOM.volumeValueText.textContent = Math.round(persistentData.volume * 100);
+    if (persistentData.isMuted || persistentData.volume === 0) {
+      DOM.btnMute.textContent = '🔇';
+    } else if (persistentData.volume < 0.34) {
+      DOM.btnMute.textContent = '🔈';
+    } else if (persistentData.volume < 0.67) {
+      DOM.btnMute.textContent = '🔉';
+    } else {
+      DOM.btnMute.textContent = '🔊';
     }
   }
 
-  // ===== 5. 게임 루프 & 실시간 타이머 =====
+  // ===== 색종이 좌우 폭발 =====
+  function fireConfetti() {
+    if (persistentData.isReducedMotion) return;
+    const container = DOM.confettiContainer;
+    if (!container) return;
+    container.innerHTML = '';
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const cx = vw / 2;
+    const cy = vh * 0.5 + 50;
+
+    const spread = vw * 0.45;
+    const count = 80;
+
+    for (let i = 0; i < count; i++) {
+      const piece = document.createElement('div');
+      piece.className = 'confetti-piece' + (Math.random() < 0.35 ? ' round' : '');
+
+      const goRight = i % 2 === 0;
+      const angleDeg = (Math.random() - 0.5) * 50;
+      const angleRad = angleDeg * Math.PI / 180;
+      const dirSign = goRight ? 1 : -1;
+      const dist = spread * (0.5 + Math.random() * 0.5);
+
+      const tx = Math.cos(angleRad) * dist * dirSign;
+      const ty = Math.sin(angleRad) * dist;
+
+      const w = 6 + Math.random() * 8;
+      const h = 10 + Math.random() * 10;
+      const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+      const spin = (Math.random() - 0.5) * 1440;
+      const dur = 1200 + Math.random() * 700;
+
+      piece.style.width = w + 'px';
+      piece.style.height = h + 'px';
+      piece.style.background = color;
+      piece.style.left = cx + 'px';
+      piece.style.top = cy + 'px';
+      piece.style.animationDuration = dur + 'ms';
+      piece.style.animationDelay = (Math.random() * 60) + 'ms';
+      piece.style.setProperty('--tx', tx + 'px');
+      piece.style.setProperty('--ty', ty + 'px');
+      piece.style.setProperty('--spin', spin + 'deg');
+
+      container.appendChild(piece);
+
+      setTimeout(() => { piece.remove(); }, dur + 200);
+    }
+
+    setTimeout(() => {
+      if (container) container.innerHTML = '';
+    }, CONFETTI_DURATION_MS + 800);
+  }
+
+  // ===== 게임 루프 =====
   function handleGameStartButtonClick() {
     DOM.startScreenOverlay.style.display = 'none';
     startCountdown();
   }
 
+  function clearExitTimers() {
+    if (exitEndingTimer1) { clearTimeout(exitEndingTimer1); exitEndingTimer1 = null; }
+    if (exitEndingTimer2) { clearTimeout(exitEndingTimer2); exitEndingTimer2 = null; }
+  }
+
   function startCountdown() {
     state.status = 'PLAYING';
-    state.timeRemaining = 30.0;
+    state.isPaused = false;
+    DOM.pauseOverlay.style.display = 'none';
+    state.timeRemaining = BASE_TIME;
     state.currentTokens = 0;
-    state.leftDoorOpen = false;
-    state.doorDialAmount = 0;
-    state.rightDoorOpen = false;
-    state.rightDoorDialAmount = 0;
+    state.currentRoom = 'main';
+    state.doorAOpen = false;
+    state.doorBOpen = false;
+    state.doorADialTens = 0; state.doorADialOnes = 0;
+    state.doorBDialTens = 0; state.doorBDialOnes = 0;
+    state.activeDoor = null;
+    state.exitPending = false;
     state.dialStep = 1;
     state.gearAngle = 0;
     state.totalPlaySeconds = 0;
+    state.currentView = 'none';
 
-    DOM.doorLeftImg.src = 'assets/door_closed.webp';
-    DOM.doorClosedPanel.style.display = 'flex';
-    DOM.doorOpenPanel.style.display = 'none';
-    DOM.doorFeedbackMsg.textContent = '';
-    DOM.dialAmountNum.textContent = '0';
+    clearExitTimers();
+    DOM.doorAFeedbackMsg.textContent = '';
+    DOM.doorBFeedbackMsg.textContent = '';
+    DOM.gearSpinner.style.transform = 'rotate(0deg)';
+    DOM.fadeToClearOverlay.classList.remove('active');
+    if (DOM.confettiContainer) DOM.confettiContainer.innerHTML = '';
 
-    DOM.doorRightImg.src = 'assets/door_closed.webp';
-    DOM.doorRightClosedPanel.style.display = 'flex';
-    DOM.rightDoorFeedbackMsg.textContent = '';
-    DOM.rightDialAmountNum.textContent = '0';
-
-    closeCloseup();
+    applyRoomVisual();
+    updateDialDigits();
+    closeCloseupSilent();
     DOM.resultModal.style.display = 'none';
-    DOM.clearMessageModal.style.display = 'none';
+    DOM.resultModalCard.classList.remove('wide-result');
 
     updateDialVisuals();
-    setLog('게임 시작! 30초 산소 타이머가 가동되었습니다.');
+    updateModeBadge();
     updateUI();
 
     lastRealTime = Date.now();
-
-    if (!animationFrameId) {
-      animationFrameId = requestAnimationFrame(gameLoop);
-    }
-
+    if (!animationFrameId) animationFrameId = requestAnimationFrame(gameLoop);
     if (backgroundIntervalId) clearInterval(backgroundIntervalId);
     backgroundIntervalId = setInterval(tickTime, 100);
   }
 
   function prepareRestart() {
     state.status = 'READY';
-    state.timeRemaining = 30.0;
+    state.isPaused = false;
+    DOM.pauseOverlay.style.display = 'none';
+    state.timeRemaining = BASE_TIME;
     state.currentTokens = 0;
-    state.leftDoorOpen = false;
-    state.doorDialAmount = 0;
-    state.rightDoorOpen = false;
-    state.rightDoorDialAmount = 0;
+    state.currentRoom = 'main';
+    state.doorAOpen = false;
+    state.doorBOpen = false;
+    state.doorADialTens = 0; state.doorADialOnes = 0;
+    state.doorBDialTens = 0; state.doorBDialOnes = 0;
+    state.activeDoor = null;
+    state.exitPending = false;
     state.dialStep = 1;
     state.gearAngle = 0;
+    state.currentView = 'none';
 
+    clearExitTimers();
     if (backgroundIntervalId) clearInterval(backgroundIntervalId);
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
+    if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
 
-    DOM.doorLeftImg.src = 'assets/door_closed.webp';
-    DOM.doorRightImg.src = 'assets/door_closed.webp';
-
-    closeCloseup();
+    DOM.gearSpinner.style.transform = 'rotate(0deg)';
+    DOM.fadeToClearOverlay.classList.remove('active');
+    if (DOM.confettiContainer) DOM.confettiContainer.innerHTML = '';
+    applyRoomVisual();
+    updateDialDigits();
+    closeCloseupSilent();
     DOM.resultModal.style.display = 'none';
-    DOM.clearMessageModal.style.display = 'none';
-
     DOM.startScreenOverlay.style.display = 'flex';
-    setLog('시작 버튼을 누르면 새 판이 시작됩니다.');
     updateUI();
   }
 
   function tickTime() {
     if (state.status !== 'PLAYING') return;
+    if (state.exitPending) return;
+    if (state.isPaused) return;   // ★ 추가: 일시정지 상태면 타이머 작동 중지
     const now = Date.now();
     const delta = (now - lastRealTime) / 1000;
     lastRealTime = now;
-
     if (delta > 0) {
       state.totalPlaySeconds += delta;
       state.timeRemaining = Math.max(0, state.timeRemaining - delta);
-
-      if (state.timeRemaining <= 0) {
-        handleGameOver();
-      }
+      if (state.timeRemaining <= 0) handleGameOver();
       updateUI();
     }
   }
 
   function gameLoop() {
     tickTime();
-    if (state.status === 'PLAYING') {
-      animationFrameId = requestAnimationFrame(gameLoop);
+    if (state.status === 'PLAYING') animationFrameId = requestAnimationFrame(gameLoop);
+    else animationFrameId = null;
+  }
+
+  function updateModeBadge() {
+    if (state.gameMode === 'demo') {
+      DOM.modeBadge.style.display = 'inline-flex';
+    } else DOM.modeBadge.style.display = 'none';
+  }
+
+  // ===== 방 시각 =====
+  function applyRoomVisual() {
+    const r = state.currentRoom;
+    DOM.mainRoomObjects.style.display = (r === 'main') ? 'block' : 'none';
+    DOM.celebrationRoomObjects.style.display = (r === 'celebration') ? 'block' : 'none';
+    DOM.corridorRoomObjects.style.display = (r === 'corridor') ? 'block' : 'none';
+    DOM.outsideRoomObjects.style.display = (r === 'outside') ? 'block' : 'none';
+
+    if (r === 'outside') {
+      DOM.roomBgImg.src = 'assets/outside_street.webp';
     } else {
-      animationFrameId = null;
+      DOM.roomBgImg.src = 'assets/room_empty.webp';
+    }
+
+    if (r === 'corridor') {
+      DOM.corridorDoorImg.src = state.doorBOpen ? 'assets/door_open.webp' : 'assets/door_closed.webp';
+    }
+
+    const srcA = state.doorAOpen ? 'assets/door_open.webp' : 'assets/door_closed.webp';
+    DOM.doorLeftImg.src = srcA;
+    DOM.celebrationDoorImg.src = srcA;
+
+    const srcB = state.doorBOpen ? 'assets/door_open.webp' : 'assets/door_closed.webp';
+    DOM.doorRightImg.src = srcB;
+    DOM.corridorDoorImg.src = srcB;
+
+        // ★ 추가: 열린 문일 때 크기 클래스 토글
+    DOM.propDoorLeft.classList.toggle('open-door-state', state.doorAOpen);
+    DOM.propCelebrationDoor.classList.toggle('open-door-state', state.doorAOpen);
+    DOM.propDoorRight.classList.toggle('open-door-state', state.doorBOpen);
+    DOM.propCorridorDoor.classList.toggle('open-door-state', state.doorBOpen);
+
+    if (state.doorAOpen) {
+      DOM.propCelebrationChest.classList.add('hidden-by-door');
+      DOM.propCelebrationChest.style.pointerEvents = 'none';
+      DOM.propCelebrationChest.style.zIndex = '1';
+    } else {
+      DOM.propCelebrationChest.classList.remove('hidden-by-door');
+      DOM.propCelebrationChest.style.pointerEvents = 'auto';
+      DOM.propCelebrationChest.style.zIndex = '4';
     }
   }
 
-  function setLog(text) {
-    DOM.statusLogText.textContent = text;
+  function enterRoom(roomName) {
+    state.currentRoom = roomName;
+    applyRoomVisual();
   }
 
-  // ===== 6. 줌인 뷰 전환 =====
+  // ===== 클로즈업 =====
+  const ALL_VIEWS = [
+    'viewDoorAClosed','viewDoorBClosed','viewDoorOpen','viewMachine',
+    'viewDesk','viewChest','viewCelebrationChest','viewCelebrationClear'
+  ];
+
   function openCloseup(viewName) {
     if (state.status !== 'PLAYING') return;
     state.currentView = viewName;
     SoundFX.click();
-
-    DOM.viewDoorLeft.style.display = (viewName === 'doorLeft') ? 'block' : 'none';
-    DOM.viewMachine.style.display = (viewName === 'machine') ? 'block' : 'none';
-    DOM.viewDesk.style.display = (viewName === 'desk') ? 'block' : 'none';
-    DOM.viewChest.style.display = (viewName === 'chest') ? 'block' : 'none';
-    DOM.viewDoorRight.style.display = (viewName === 'doorRight') ? 'block' : 'none';
-    DOM.viewEmptyRoom.style.display = (viewName === 'emptyRoom') ? 'block' : 'none';
-
-    if (viewName === 'machine') {
-      updateDialVisuals();
-    }
-
+    ALL_VIEWS.forEach(k => { DOM[k].style.display = 'none'; });
+    const map = {
+      doorAClosed: DOM.viewDoorAClosed,
+      doorBClosed: DOM.viewDoorBClosed,
+      doorOpen: DOM.viewDoorOpen,
+      machine: DOM.viewMachine,
+      desk: DOM.viewDesk,
+      chest: DOM.viewChest,
+      celebrationChest: DOM.viewCelebrationChest,
+      celebrationClear: DOM.viewCelebrationClear
+    };
+    if (map[viewName]) map[viewName].style.display = 'block';
+    if (viewName === 'machine') updateDialVisuals();
+    if (viewName === 'doorAClosed' || viewName === 'doorBClosed') updateDialDigits();
+    if (viewName === 'celebrationChest') renderCelebrationChestView();
     DOM.closeupLayer.style.display = 'flex';
     updateUI();
   }
 
   function closeCloseup() {
+    if (state.currentView === 'none') return;
     state.currentView = 'none';
     DOM.closeupLayer.style.display = 'none';
     SoundFX.click();
-    setLog('방 중앙을 둘러보고 있습니다.');
+  }
+  function closeCloseupSilent() {
+    state.currentView = 'none';
+    DOM.closeupLayer.style.display = 'none';
   }
 
-  // ===== 7. 기계 8버튼 회전 미니게임 =====
+  // ===== 문 클릭 =====
+  function handleDoorAClick() {
+    if (state.doorAOpen) {
+      state.activeDoor = 'A';
+      openCloseup('doorOpen');
+    } else {
+      openCloseup('doorAClosed');
+    }
+  }
+  function handleDoorBClick() {
+    if (state.doorBOpen) {
+      state.activeDoor = 'B';
+      openCloseup('doorOpen');
+    } else {
+      openCloseup('doorBClosed');
+    }
+  }
+
+  // ===== 2자리 다이얼 =====
+  function updateDialDigits() {
+    DOM.doorATens.textContent = state.doorADialTens;
+    DOM.doorAOnes.textContent = state.doorADialOnes;
+    DOM.doorBTens.textContent = state.doorBDialTens;
+    DOM.doorBOnes.textContent = state.doorBDialOnes;
+  }
+
+  function handleDigitArrow(target, place, dir) {
+    const isA = target === 'A';
+    if (isA) {
+      if (place === 'tens') state.doorADialTens = (state.doorADialTens + dir + 10) % 10;
+      else state.doorADialOnes = (state.doorADialOnes + dir + 10) % 10;
+    } else {
+      if (place === 'tens') state.doorBDialTens = (state.doorBDialTens + dir + 10) % 10;
+      else state.doorBDialOnes = (state.doorBDialOnes + dir + 10) % 10;
+    }
+    SoundFX.click();
+    updateDialDigits();
+  }
+
+  function getDialValue(target) {
+    if (target === 'A') return state.doorADialTens * 10 + state.doorADialOnes;
+    return state.doorBDialTens * 10 + state.doorBDialOnes;
+  }
+
+  function handleSubmitDoor(target) {
+    if (state.status !== 'PLAYING') return;
+    const isA = target === 'A';
+    if (isA && state.doorAOpen) return;
+    if (!isA && state.doorBOpen) return;
+
+    const amount = getDialValue(target);
+    const required = isA ? TARGET_TOKENS_A : TARGET_TOKENS_B;
+    const feedbackEl = isA ? DOM.doorAFeedbackMsg : DOM.doorBFeedbackMsg;
+
+    if (amount <= 0) {
+      feedbackEl.textContent = '투입할 토큰 수량을 1개 이상 맞춰주세요.';
+      feedbackEl.style.color = '#f87171';
+      return;
+    }
+    if (state.currentTokens < amount) {
+      feedbackEl.textContent = `소지 토큰이 부족합니다! (소지: ${state.currentTokens}개)`;
+      feedbackEl.style.color = '#f87171';
+      return;
+    }
+
+    state.currentTokens -= amount;
+
+    if (amount === required) {
+      if (isA) state.doorAOpen = true;
+      else state.doorBOpen = true;
+      applyRoomVisual();
+      SoundFX.doorOpen();
+      state.activeDoor = target;
+      openCloseup('doorOpen');
+    } else {
+      SoundFX.doorFail();
+      feedbackEl.textContent = `토큰 ${amount}개가 투입구 속으로 사라졌지만 문은 열리지 않았습니다... (토큰 소멸)`;
+      feedbackEl.style.color = '#f87171';
+    }
+
+    if (isA) { state.doorADialTens = 0; state.doorADialOnes = 0; }
+    else { state.doorBDialTens = 0; state.doorBDialOnes = 0; }
+    updateDialDigits();
+    updateUI();
+  }
+
+  // ===== 문 열림 패널 =====
+  function handleEnterDoor() {
+    const which = state.activeDoor;
+    if (which === 'A') {
+      if (state.currentRoom === 'main') enterRoom('celebration');
+      else if (state.currentRoom === 'celebration') enterRoom('main');
+    } else if (which === 'B') {
+      if (state.currentRoom === 'main') enterRoom('corridor');
+      else if (state.currentRoom === 'corridor') enterRoom('main');
+    }
+    closeCloseupSilent();
+  }
+
+  function handleCloseDoor() {
+    const which = state.activeDoor;
+    if (which === 'A') { state.doorAOpen = false; state.doorADialTens = 0; state.doorADialOnes = 0; }
+    else if (which === 'B') { state.doorBOpen = false; state.doorBDialTens = 0; state.doorBDialOnes = 0; }
+    state.activeDoor = null;
+    applyRoomVisual();
+    updateDialDigits();
+    DOM.doorAFeedbackMsg.textContent = '';
+    DOM.doorBFeedbackMsg.textContent = '';
+    SoundFX.doorFail();
+    closeCloseupSilent();
+    updateUI();
+  }
+
+  // ===== 기계 =====
   function handleDialButtonClick(btnStep) {
     if (state.status !== 'PLAYING') return;
-
     if (btnStep === state.dialStep) {
       SoundFX.dialStep(btnStep);
       state.gearAngle += 45;
       DOM.gearSpinner.style.transform = `rotate(${state.gearAngle}deg)`;
-
       if (btnStep < 8) {
         state.dialStep = btnStep + 1;
         updateDialVisuals();
       } else {
         SoundFX.dialComplete();
-        state.currentTokens += 1;
+        const gain = state.gameMode === 'demo' ? DEMO_TOKEN_PER_CLEAR : NORMAL_TOKEN_PER_CLEAR;
+        state.currentTokens += gain;
         state.dialStep = 1;
         updateDialVisuals();
-
-        triggerFloatingTokenFx();
-        setLog(`[회전 성공!] 토큰 +1 획득! (현재 토큰: ${state.currentTokens}개)`);
+        if (state.gameMode === 'demo') {
+          triggerFloatingTokenFx('+1');
+          setTimeout(() => triggerFloatingTokenFx('+1'), 150);
+          setTimeout(() => triggerFloatingTokenFx('+1'), 300);
+        } 
+        else {
+          triggerFloatingTokenFx('+1');
+          setTimeout(() => triggerFloatingTokenFx('+1'), 150);
+        }
         updateUI();
       }
     } else {
       SoundFX.dialError();
-      const clickedBtn = DOM.dialBtns[btnStep - 1];
-      if (clickedBtn) {
-        clickedBtn.classList.add('error-step');
-        setTimeout(() => clickedBtn.classList.remove('error-step'), 300);
-      }
+      const cb = DOM.dialBtns[btnStep - 1];
+      if (cb) { cb.classList.add('error-step'); setTimeout(()=>cb.classList.remove('error-step'),300); }
       state.dialStep = 1;
       updateDialVisuals();
-      setLog('[순서 오류] 1번부터 시계 방향으로 누르세요.');
     }
   }
 
-  function triggerFloatingTokenFx() {
+  function triggerFloatingTokenFx(text) {
     if (persistentData.isReducedMotion) return;
-    const floatFx = document.createElement('div');
-    floatFx.className = 'floating-token-fx';
-    floatFx.textContent = '🪙 +1';
-    DOM.circleDial.appendChild(floatFx);
-    setTimeout(() => floatFx.remove(), 850);
+    const fx = document.createElement('div');
+    fx.className = 'floating-token-fx';
+    fx.textContent = `🪙`;
+    DOM.circleDial.appendChild(fx);
+    setTimeout(() => fx.remove(), 850);
   }
 
   function updateDialVisuals() {
     DOM.stepCounter.textContent = `${state.dialStep} / 8`;
     DOM.dialGuideText.textContent = `${state.dialStep}번 버튼 클릭!`;
-
     DOM.dialBtns.forEach((btn, idx) => {
-      const stepNum = idx + 1;
-      btn.classList.remove('next-step', 'passed-step', 'error-step');
-      if (stepNum < state.dialStep) {
-        btn.classList.add('passed-step');
-      } else if (stepNum === state.dialStep) {
-        btn.classList.add('next-step');
-      }
+      const n = idx + 1;
+      btn.classList.remove('next-step','passed-step','error-step');
+      if (n < state.dialStep) btn.classList.add('passed-step');
+      else if (n === state.dialStep) btn.classList.add('next-step');
     });
   }
 
   function handleExtend() {
     if (state.status !== 'PLAYING') return;
-    if (state.currentTokens < 1) {
-      setLog('토큰이 부족합니다.');
-      return;
-    }
+    if (state.currentTokens < 1) return;
     state.currentTokens -= 1;
     state.timeRemaining += 2.0;
     SoundFX.extendTime();
-    setLog(`[시간 연장] 토큰 1개 소모 ➡️ 생존시간 +2초 확보! (${state.timeRemaining.toFixed(1)}s)`);
     updateUI();
   }
 
-  // ===== 8. 왼쪽 문 다이얼 로직 =====
-  function handleDialMinus() {
-    if (state.doorDialAmount > 0) {
-      state.doorDialAmount--;
-      DOM.dialAmountNum.textContent = state.doorDialAmount;
-      SoundFX.click();
-    }
-  }
-
-  function handleDialPlus() {
-    state.doorDialAmount++;
-    DOM.dialAmountNum.textContent = state.doorDialAmount;
-    SoundFX.click();
-  }
-
-  function handleSubmitDial() {
-    if (state.status !== 'PLAYING') return;
-    if (state.leftDoorOpen) return;
-
-    const amount = state.doorDialAmount;
-    if (amount <= 0) {
-      DOM.doorFeedbackMsg.textContent = '투입할 토큰 수량을 1개 이상 맞춰주세요.';
-      DOM.doorFeedbackMsg.style.color = '#f87171';
-      return;
-    }
-
-    if (state.currentTokens < amount) {
-      DOM.doorFeedbackMsg.textContent = `소지 토큰이 부족합니다! (소지: ${state.currentTokens}개)`;
-      DOM.doorFeedbackMsg.style.color = '#f87171';
-      return;
-    }
-
-    state.currentTokens -= amount;
-    const required = DIFFICULTY_PRESETS[state.activeDifficulty].targetTokens;
-
-    if (amount === required) {
-      state.leftDoorOpen = true;
-      DOM.doorLeftImg.src = 'assets/door_open.webp';
-      DOM.doorClosedPanel.style.display = 'none';
-      DOM.doorOpenPanel.style.display = 'flex';
-      SoundFX.doorOpen();
-      setLog(`[문 개방] 철컥! 정확히 토큰 ${amount}개를 투입하여 문이 활짝 열렸습니다!`);
-    } else {
-      SoundFX.doorFail();
-      DOM.doorFeedbackMsg.textContent = `토큰 ${amount}개가 투입구 속으로 사라졌지만 문은 열리지 않았습니다... (토큰 소멸)`;
-      DOM.doorFeedbackMsg.style.color = '#f87171';
-      setLog(`[투입 실패] 토큰 ${amount}개가 소멸되었습니다.`);
-    }
-
-    state.doorDialAmount = 0;
-    DOM.dialAmountNum.textContent = '0';
-    updateUI();
-  }
-
-  function handleEnterLeftDoor() {
-    openCloseup('emptyRoom');
-    setLog('열린 문 너머의 빈 방으로 들어왔습니다. 가운데에 빈 버튼이 있습니다.');
-  }
-
-  function handleBlankButtonClick() {
-    SoundFX.clearFanfare();
-    recordHistory('빈 방 클리어 (버튼 작동)', '정확한 5개 투입 후 빈 방 버튼 클릭');
-    DOM.clearMessageModal.style.display = 'flex';
-    setLog('[클리어 안내] 빈 방의 버튼이 작동되었습니다. 게임을 계속 이어갈 수 있습니다.');
-  }
-
-  function handleCloseClearMessage() {
-    DOM.clearMessageModal.style.display = 'none';
-  }
-
-  // ===== 9. ★ 오른쪽 문 다이얼 로직 (왼쪽 문과 동일) =====
-  function handleRightDialMinus() {
-    if (state.rightDoorDialAmount > 0) {
-      state.rightDoorDialAmount--;
-      DOM.rightDialAmountNum.textContent = state.rightDoorDialAmount;
-      SoundFX.click();
-    }
-  }
-
-  function handleRightDialPlus() {
-    state.rightDoorDialAmount++;
-    DOM.rightDialAmountNum.textContent = state.rightDoorDialAmount;
-    SoundFX.click();
-  }
-
-  function handleSubmitRightDial() {
-    if (state.status !== 'PLAYING') return;
-    if (state.rightDoorOpen) return;
-
-    const amount = state.rightDoorDialAmount;
-    if (amount <= 0) {
-      DOM.rightDoorFeedbackMsg.textContent = '투입할 토큰 수량을 1개 이상 맞춰주세요.';
-      DOM.rightDoorFeedbackMsg.style.color = '#f87171';
-      return;
-    }
-
-    if (state.currentTokens < amount) {
-      DOM.rightDoorFeedbackMsg.textContent = `소지 토큰이 부족합니다! (소지: ${state.currentTokens}개)`;
-      DOM.rightDoorFeedbackMsg.style.color = '#f87171';
-      return;
-    }
-
-    state.currentTokens -= amount;
-    const required = DIFFICULTY_PRESETS[state.activeDifficulty].targetTokens;
-
-    if (amount === required) {
-      state.rightDoorOpen = true;
-      DOM.doorRightImg.src = 'assets/door_open.webp';
-      DOM.doorRightClosedPanel.style.display = 'none';
-      SoundFX.doorOpen();
-      setLog(`[문 개방] 철컥! 정확히 토큰 ${amount}개를 투입하여 오른쪽 문이 열렸습니다!`);
-      
-      // 진엔딩 처리
-      setTimeout(() => handleTrueClear(), 500);
-    } else {
-      SoundFX.doorFail();
-      DOM.rightDoorFeedbackMsg.textContent = `토큰 ${amount}개가 투입구 속으로 사라졌지만 문은 열리지 않았습니다... (토큰 소멸)`;
-      DOM.rightDoorFeedbackMsg.style.color = '#f87171';
-      setLog(`[투입 실패] 토큰 ${amount}개가 소멸되었습니다.`);
-    }
-
-    state.rightDoorDialAmount = 0;
-    DOM.rightDialAmountNum.textContent = '0';
-    updateUI();
-  }
-
-  // ===== 10. 기타 오브젝트 상호작용 =====
+  // ===== 상자들 =====
   function handleTakeChest() {
     if (state.status !== 'PLAYING') return;
-    if (persistentData.chestTokens <= 0) {
-      setLog('상자가 비어 있습니다.');
-      return;
-    }
-    const claimed = persistentData.chestTokens;
-    state.currentTokens += claimed;
+    if (persistentData.chestTokens <= 0) return;
+    const n = persistentData.chestTokens;
+    state.currentTokens += n;
     persistentData.chestTokens = 0;
     savePersistentData();
     SoundFX.claimChest();
-    setLog(`상자에서 토큰 ${claimed}개를 모두 꺼냈습니다.`);
     updateUI();
   }
 
-  function handleTrueClear() {
-    state.status = 'CLEAR_TRUE';
-    if (backgroundIntervalId) clearInterval(backgroundIntervalId);
-    closeCloseup();
-    SoundFX.trueClear();
-    recordHistory('보안문 해제 (진엔딩)', '토큰 다이얼 해제');
+  function renderCelebrationChestView() {
+    if (persistentData.celebrationChestClaimed) {
+      DOM.celebrationTokenIcons.innerHTML = '';
+      DOM.btnClaimCelebrationChest.style.display = 'none';
+      DOM.celebrationChestClaimedText.style.display = 'block';
+    } else {
+      DOM.celebrationTokenIcons.innerHTML =
+        `<span class="token-reward-line">🪙 × ${CELEBRATION_CHEST_TOKENS}</span>`;
+      DOM.btnClaimCelebrationChest.style.display = 'block';
+      DOM.btnClaimCelebrationChest.disabled = false;
+      DOM.celebrationChestClaimedText.style.display = 'none';
+    }
+  }
 
-    DOM.modalIcon.textContent = '🌌';
-    DOM.modalTitle.textContent = '진정한 탈출!';
-    DOM.modalTitle.style.color = '#34d399';
-    DOM.modalContent.innerHTML = `
-      <p style="font-size:1.05rem; color:#f1f5f9; font-weight:700;">
-        정확한 수량의 토큰이 투입되며 보안문이 열리고 시설의 심층 구역으로 진입했습니다.
-      </p>
-      <div style="background:rgba(52, 211, 153, 0.12); padding:14px; border-radius:8px; margin:16px 0; font-size:0.92rem;">
-        ⏱️ 달성 시간: <strong>${state.totalPlaySeconds.toFixed(1)}초</strong><br>
-        📦 총 누적 유산: <strong>${persistentData.chestTokens + state.currentTokens}개</strong>
-      </div>
-    `;
-    DOM.resultModal.style.display = 'flex';
+  function handleClaimCelebrationChest() {
+    if (persistentData.celebrationChestClaimed) return;
+    persistentData.celebrationChestClaimed = true;
+    state.currentTokens += CELEBRATION_CHEST_TOKENS;
+    savePersistentData();
+    SoundFX.claimChest();
+    renderCelebrationChestView();
     updateUI();
   }
 
+  // ===== 축하방 일지 (팡파레 + 색종이) =====
+  function handleCelebrationDeskClick() {
+    SoundFX.clearFanfare();
+    fireConfetti();
+    recordHistory('축하방 일지 조사 (클리어)', '축하방 일지 상호작용');
+    openCloseup('celebrationClear');
+  }
+
+  // ===== 복도 EXIT =====
+  function handleCorridorExit() {
+    if (state.exitPending) return;
+    state.exitPending = true;
+    SoundFX.escapeFanfare();
+
+    state.currentRoom = 'outside';
+    applyRoomVisual();
+
+    exitEndingTimer1 = setTimeout(() => {
+      DOM.fadeToClearOverlay.classList.add('active');
+    }, 1000);
+
+    exitEndingTimer2 = setTimeout(() => {
+      if (backgroundIntervalId) clearInterval(backgroundIntervalId);
+      if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
+      state.status = 'GAME_OVER';
+      recordHistory('진엔딩 - 탈출 성공', '복도 EXIT 통과');
+      DOM.resultModalCard.classList.remove('wide-result');
+      DOM.modalIcon.textContent = 'YOU🏃WIN';
+      DOM.modalTitle.innerHTML = '축하합니다! <br> 진정한 탈출에 성공하였습니다.';
+      DOM.modalTitle.style.color = '#34d399';
+      DOM.modalContent.innerHTML = '';
+      DOM.btnRestartGame.textContent = '처음화면으로 돌아가기';
+      DOM.resultModal.style.display = 'flex';
+      updateUI();
+    }, 3000);
+  }
+
+  // ===== 게임오버 =====
   function handleGameOver() {
     state.status = 'GAME_OVER';
     if (backgroundIntervalId) clearInterval(backgroundIntervalId);
-    closeCloseup();
-    DOM.clearMessageModal.style.display = 'none';
+    closeCloseupSilent();
     SoundFX.gameOver();
-
     const saved = state.currentTokens;
     persistentData.chestTokens += saved;
     savePersistentData();
+    recordHistory('시간 초과', `토큰 ${saved}개 상자 저장`);
 
-    recordHistory('산소 고갈 (사망)', `토큰 ${saved}개 상자 저장`);
-
-    DOM.modalIcon.textContent = '💀';
-    DOM.modalTitle.textContent = '시간 초과';
+    DOM.resultModalCard.classList.add('wide-result');
+    DOM.modalIcon.textContent = '';
+    DOM.modalIcon.style.minHeight = '1em'; // 공간 확보
+    DOM.modalTitle.textContent = '💨시간 초과💨';
     DOM.modalTitle.style.color = '#f87171';
     DOM.modalContent.innerHTML = `
-      <p style="font-size:0.95rem; color:#f1f5f9;">
-        30초 산소 제한 시간이 모두 지났습니다.
+      <p style="font-size:1.95rem; color:#cbd5e1; line-height:1.6; margin:0;">
+        <br>
       </p>
-      <div style="background:rgba(248, 113, 113, 0.12); padding:14px; border-radius:8px; margin:16px 0; font-size:0.92rem;">
-        📦 가지고 있던 <strong>${saved}개</strong>의 토큰은 사라지지 않고<br>
-        <strong>[상자]</strong>에 안전하게 보관되었습니다!
-      </div>
     `;
+    DOM.btnRestartGame.textContent = '다시 하기';
     DOM.resultModal.style.display = 'flex';
     updateUI();
   }
@@ -657,167 +791,161 @@
   function recordHistory(result, detail) {
     const entry = {
       id: persistentData.history.length + 1,
-      difficulty: DIFFICULTY_PRESETS[state.activeDifficulty].name,
-      result: result,
-      duration: `${state.totalPlaySeconds.toFixed(1)}s`,
-      tokens: state.currentTokens,
-      detail: detail
+      mode: state.gameMode === 'demo' ? '시연용' : '표준',
+      result, duration: `${state.totalPlaySeconds.toFixed(1)}s`,
+      tokens: state.currentTokens, detail
     };
     persistentData.history.unshift(entry);
     savePersistentData();
     DOM.historyBadge.textContent = persistentData.history.length;
   }
 
-  // ===== 11. UI 동기화 =====
+  // ===== UI =====
   function updateUI() {
-    DOM.timeDisplay.textContent = `${state.timeRemaining.toFixed(1)}s`;
+    DOM.timeDisplay.textContent = `${state.timeRemaining.toFixed(1)}`;
     DOM.tokenDisplay.textContent = state.currentTokens;
-    DOM.chestDisplay.textContent = persistentData.chestTokens;
-
-    if (state.timeRemaining <= 10.0 && state.status === 'PLAYING') {
+    if (state.timeRemaining <= 10.0 && state.status === 'PLAYING' && !state.exitPending) {
       DOM.hudTimer.classList.add('danger-state');
-    } else {
-      DOM.hudTimer.classList.remove('danger-state');
-    }
-
+    } else DOM.hudTimer.classList.remove('danger-state');
     DOM.btnExtend.disabled = (state.currentTokens < 1);
     DOM.crateCountText.textContent = persistentData.chestTokens;
     DOM.btnTakeChest.disabled = (persistentData.chestTokens <= 0);
-
-    DOM.btnMute.textContent = persistentData.isMuted ? '🔇 음소거 중' : '🔊 소리 켬';
-    DOM.btnReducedMotion.textContent = persistentData.isReducedMotion ? '🛑 연출 끔' : '✨ 연출 켬';
   }
 
-  // ===== 12. 이벤트 바인딩 =====
+  function setGameMode(mode) {
+    state.gameMode = mode;
+    DOM.btnModeDemo.classList.toggle('active', mode === 'demo');
+    DOM.btnModeNormal.classList.toggle('active', mode === 'normal');
+    updateModeBadge();
+  }
+
+  // ===== 이벤트 =====
+  DOM.btnModeNormal.addEventListener('click', () => setGameMode('normal'));
+  DOM.btnModeDemo.addEventListener('click', () => setGameMode('demo'));
+  DOM.btnModeHelp.addEventListener('mouseenter', () => DOM.modeHelpTooltip.classList.add('visible'));
+  DOM.btnModeHelp.addEventListener('mouseleave', () => DOM.modeHelpTooltip.classList.remove('visible'));
+  DOM.btnModeHelp.addEventListener('focus', () => DOM.modeHelpTooltip.classList.add('visible'));
+  DOM.btnModeHelp.addEventListener('blur', () => DOM.modeHelpTooltip.classList.remove('visible'));
+
   DOM.btnStartGame.addEventListener('click', handleGameStartButtonClick);
 
-  DOM.propDoorLeft.addEventListener('click', () => {
-    openCloseup('doorLeft');
-    setLog(state.leftDoorOpen ? '열려 있는 문을 바라봅니다.' : '문을 조사합니다.');
+  DOM.propDoorLeft.addEventListener('click', handleDoorAClick);
+  DOM.propDoorRight.addEventListener('click', handleDoorBClick);
+  DOM.propCelebrationDoor.addEventListener('click', handleDoorAClick);
+  DOM.propCorridorDoor.addEventListener('click', handleDoorBClick);
+
+  DOM.propMachine.addEventListener('click', () => openCloseup('machine'));
+  DOM.propDesk.addEventListener('click', () => openCloseup('desk'));
+  DOM.propChest.addEventListener('click', () => openCloseup('chest'));
+  DOM.propCelebrationDesk.addEventListener('click', handleCelebrationDeskClick);
+  DOM.propCelebrationChest.addEventListener('click', () => {
+    if (state.doorAOpen) return;
+    openCloseup('celebrationChest');
   });
-  DOM.propMachine.addEventListener('click', () => {
-    openCloseup('machine');
-    setLog('기계를 조사합니다.');
-  });
-  DOM.propDesk.addEventListener('click', () => {
-    openCloseup('desk');
-    setLog('책상을 조사합니다.');
-  });
-  DOM.propChest.addEventListener('click', () => {
-    openCloseup('chest');
-    setLog('상자를 조사합니다.');
-  });
-  DOM.propDoorRight.addEventListener('click', () => {
-    openCloseup('doorRight');
-    setLog(state.rightDoorOpen ? '열려 있는 문을 바라봅니다.' : '문을 조사합니다.');
-  });
+  DOM.propCorridorExit.addEventListener('click', handleCorridorExit);
 
   DOM.btnCloseCloseup.addEventListener('click', closeCloseup);
 
-  // 8버튼 다이얼
-  DOM.dialBtns.forEach((btn, idx) => {
-    const stepNum = idx + 1;
-    btn.addEventListener('click', () => handleDialButtonClick(stepNum));
+  document.querySelectorAll('.digit-arrow').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.target;
+      const place = btn.dataset.place;
+      const isUp = btn.classList.contains('up');
+      handleDigitArrow(target, place, isUp ? 1 : -1);
+    });
   });
 
+  DOM.btnSubmitDoorA.addEventListener('click', () => handleSubmitDoor('A'));
+  DOM.btnSubmitDoorB.addEventListener('click', () => handleSubmitDoor('B'));
+
+  DOM.dialBtns.forEach((btn, idx) => {
+    const n = idx + 1;
+    btn.addEventListener('click', () => handleDialButtonClick(n));
+  });
   DOM.btnExtend.addEventListener('click', handleExtend);
 
-  // 왼쪽 문 다이얼 조작
-  DOM.btnDialMinus.addEventListener('click', handleDialMinus);
-  DOM.btnDialPlus.addEventListener('click', handleDialPlus);
-  DOM.btnSubmitDial.addEventListener('click', handleSubmitDial);
-  DOM.btnEnterLeftDoor.addEventListener('click', handleEnterLeftDoor);
-
-  // 오른쪽 문 다이얼 조작 (추가)
-  DOM.btnRightDialMinus.addEventListener('click', handleRightDialMinus);
-  DOM.btnRightDialPlus.addEventListener('click', handleRightDialPlus);
-  DOM.btnSubmitRightDial.addEventListener('click', handleSubmitRightDial);
-
-  // 빈 방 조작
-  DOM.btnBlankClear.addEventListener('click', handleBlankButtonClick);
-  DOM.btnReturnToMainRoom.addEventListener('click', () => {
-    openCloseup('doorLeft');
-  });
-  DOM.btnCloseClearMessage.addEventListener('click', handleCloseClearMessage);
+  DOM.btnEnterDoor.addEventListener('click', handleEnterDoor);
+  DOM.btnCloseDoor.addEventListener('click', handleCloseDoor);
 
   DOM.btnTakeChest.addEventListener('click', handleTakeChest);
-  DOM.btnRestartGame.addEventListener('click', prepareRestart);
+  DOM.btnClaimCelebrationChest.addEventListener('click', handleClaimCelebrationChest);
+  DOM.btnRestartGame.addEventListener('click', () => {
+    DOM.resultModal.style.display = 'none';
+    prepareRestart();
+  });
 
-  // 음소거 & 연출 토글
+  DOM.closeupLayer.addEventListener('click', (e) => {
+    if (e.target === DOM.closeupLayer) closeCloseup();
+  });
+
+  // ===== 일시정지 =====
+  DOM.btnPause.addEventListener('click', () => {
+    if (state.status !== 'PLAYING') return;
+    state.isPaused = true;
+    DOM.pauseOverlay.style.display = 'flex';
+    if (backgroundIntervalId) { clearInterval(backgroundIntervalId); backgroundIntervalId = null; }
+    if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; }
+  });
+
+  DOM.btnResumeGame.addEventListener('click', () => {
+    if (!state.isPaused) return;
+    state.isPaused = false;
+    DOM.pauseOverlay.style.display = 'none';
+    lastRealTime = Date.now();
+    if (!animationFrameId) animationFrameId = requestAnimationFrame(gameLoop);
+    if (!backgroundIntervalId) backgroundIntervalId = setInterval(tickTime, 100);
+  });
+
   DOM.btnMute.addEventListener('click', () => {
-    persistentData.isMuted = !persistentData.isMuted;
+    DOM.volumeSliderPanel.classList.toggle('open');
+  });
+  DOM.volumeSliderPanel.addEventListener('mouseleave', () => {
+    DOM.volumeSliderPanel.classList.remove('open');
+  });
+  DOM.volumeSlider.addEventListener('input', () => {
+    const v = parseInt(DOM.volumeSlider.value, 10) / 100;
+    persistentData.volume = v;
+    if (v > 0) persistentData.isMuted = false;
+    updateVolumeUI();
     savePersistentData();
-    updateUI();
+  });
+  DOM.volumeSlider.addEventListener('change', () => {
+    playTone(660, 'sine', 0.06, 0.08);
   });
 
   DOM.btnReducedMotion.addEventListener('click', () => {
     persistentData.isReducedMotion = !persistentData.isReducedMotion;
     document.body.classList.toggle('reduced-motion', persistentData.isReducedMotion);
     savePersistentData();
-    updateUI();
+    DOM.btnReducedMotion.textContent = persistentData.isReducedMotion ? '🛑' : '✨';
   });
-
   DOM.btnResetSave.addEventListener('click', () => {
     if (confirm('모든 상자 토큰과 기록을 초기화하시겠습니까?')) {
       persistentData = {
-        chestTokens: 0,
-        isMuted: false,
-        isReducedMotion: false,
-        activeDifficulty: state.activeDifficulty,
-        history: []
+        chestTokens: 2, celebrationChestClaimed: false,
+        isMuted: false, volume: 0.6,
+        isReducedMotion: false, history: []
       };
       savePersistentData();
+      updateVolumeUI();
       prepareRestart();
     }
   });
 
-  // 난이도 전환
-  DOM.btnDiffA.addEventListener('click', () => {
-    state.activeDifficulty = 'A';
-    persistentData.activeDifficulty = 'A';
-    DOM.btnDiffA.classList.add('active');
-    DOM.btnDiffB.classList.remove('active');
-    savePersistentData();
-    prepareRestart();
-  });
-
-  DOM.btnDiffB.addEventListener('click', () => {
-    state.activeDifficulty = 'B';
-    persistentData.activeDifficulty = 'B';
-    DOM.btnDiffB.classList.add('active');
-    DOM.btnDiffA.classList.remove('active');
-    savePersistentData();
-    prepareRestart();
-  });
-
-  // 기록 모달
   DOM.btnOpenHistory.addEventListener('click', renderHistoryModal);
-  DOM.btnCloseHistory.addEventListener('click', () => {
-    DOM.historyModal.style.display = 'none';
-  });
-
+  DOM.btnCloseHistory.addEventListener('click', () => { DOM.historyModal.style.display = 'none'; });
   DOM.btnClearHistory.addEventListener('click', () => {
     if (confirm('플레이 기록을 모두 지우시겠습니까?')) {
-      persistentData.history = [];
-      savePersistentData();
-      renderHistoryModal();
+      persistentData.history = []; savePersistentData(); renderHistoryModal();
       DOM.historyBadge.textContent = '0';
     }
   });
-
   DOM.btnExportHistory.addEventListener('click', () => {
-    if (persistentData.history.length === 0) {
-      alert('기록된 로그가 없습니다.');
-      return;
-    }
-    const lines = persistentData.history.map(h => 
-      `[#${h.id}] ${h.difficulty} | 결과: ${h.result} | 시간: ${h.duration} | 토큰: ${h.tokens} | ${h.detail}`
-    );
-    navigator.clipboard.writeText(lines.join('\n')).then(() => {
-      alert('기록이 클립보드에 복사되었습니다!');
-    }).catch(() => {
-      alert('화면의 표를 직접 복사해 주세요.');
-    });
+    if (persistentData.history.length === 0) { alert('기록된 로그가 없습니다.'); return; }
+    const lines = persistentData.history.map(h =>
+      `[#${h.id}] ${h.mode} | 결과: ${h.result} | 시간: ${h.duration} | 토큰: ${h.tokens} | ${h.detail}`);
+    navigator.clipboard.writeText(lines.join('\n')).then(()=>alert('기록이 클립보드에 복사되었습니다!'))
+      .catch(()=>alert('화면의 표를 직접 복사해 주세요.'));
   });
 
   function renderHistoryModal() {
@@ -829,41 +957,40 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${idx + 1}</td>
-          <td><span style="color:#38bdf8;">${h.difficulty}</span></td>
+          <td><span style="color:#38bdf8;">${h.mode}</span></td>
           <td><strong>${h.result}</strong></td>
           <td>${h.duration}</td>
           <td>${h.tokens}</td>
-          <td style="color:#94a3b8; font-size:0.8rem;">${h.detail}</td>
-        `;
+          <td style="color:#94a3b8; font-size:0.8rem;">${h.detail}</td>`;
         DOM.historyTableBody.appendChild(tr);
       });
     }
     DOM.historyModal.style.display = 'flex';
   }
 
-  // 단축키
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'r' || e.key === 'R') {
-      if (state.status === 'GAME_OVER' || state.status === 'CLEAR_TRUE') {
-        prepareRestart();
-      }
-    }
-    if (e.key === 'Escape' && state.currentView !== 'none') {
-      closeCloseup();
+    if ((e.key === 'r' || e.key === 'R') && state.status === 'GAME_OVER') { DOM.resultModal.style.display = 'none'; prepareRestart(); }
+    if (e.key === 'Escape' && state.currentView !== 'none') closeCloseup();
+  });
+
+  // ===== 새로고침/창 닫기 시 토큰 상자로 이동 (기절 처리) =====
+  window.addEventListener('beforeunload', () => {
+    // 게임 플레이 중일 때만 토큰을 상자로 옮깁니다. (이미 게임오버면 중복 저장 방지)
+    if (state.status === 'PLAYING') {
+      persistentData.chestTokens += state.currentTokens;
+      savePersistentData();
     }
   });
 
-  // ===== 13. 초기화 구동 =====
+  // ===== 초기화 =====
   loadPersistentData();
-  state.activeDifficulty = persistentData.activeDifficulty || 'A';
-  if (state.activeDifficulty === 'B') {
-    DOM.btnDiffB.classList.add('active');
-    DOM.btnDiffA.classList.remove('active');
-  }
-  if (persistentData.isReducedMotion) {
-    document.body.classList.add('reduced-motion');
-  }
+  if (persistentData.isReducedMotion) document.body.classList.add('reduced-motion');
   DOM.historyBadge.textContent = persistentData.history.length;
+  DOM.btnReducedMotion.textContent = persistentData.isReducedMotion ? '🛑' : '✨';
+  updateVolumeUI();
+  setGameMode('normal');
+  applyRoomVisual();
+  updateDialDigits();
   updateUI();
 
 })();
